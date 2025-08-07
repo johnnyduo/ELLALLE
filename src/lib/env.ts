@@ -50,6 +50,9 @@ export const CONTRACT_CONFIG = {
   noirVerifier: import.meta.env.VITE_NOIR_VERIFIER_ADDRESS || '0xD2163E87d7fd20bc91e7B80D4D5AbcBad4Eb0888',
   priceOracle: import.meta.env.VITE_PRICE_ORACLE_ADDRESS || '0xD2163E87d7fd20bc91e7B80D4D5AbcBad4Eb0888',
   
+  // Token Contracts
+  usdcToken: import.meta.env.VITE_USDC_TOKEN_ADDRESS || '0x1b20865c8C1B8B50cC19F54D8Da4873bfFcaD1F3',
+  
   // Legacy contract addresses (kept for backward compatibility)
   trading: import.meta.env.VITE_TRADING_CONTRACT_ADDRESS || '0xC4D7B5729A9Dca7dfcaCd1BB435bba3d0B559617',
   token: import.meta.env.VITE_TOKEN_CONTRACT_ADDRESS || '',

@@ -1,14 +1,33 @@
 
 import { Button } from '@/components/ui/button';
-import { Brain, Eye, EyeOff, Gamepad2, Shield, TrendingUp } from 'lucide-react';
-import { useState } from 'react';
+import { WalletButton } from '@/components/WalletButton';
+import { useUSDCFaucet } from '@/hooks/useUSDCFaucet';
+import { useWallet } from '@/hooks/useWallet';
+import { Brain, Coins, Gamepad2, Shield, TrendingUp } from 'lucide-react';
+import { useEffect } from 'react';
 
 interface HeroProps {
   onNavigate?: (section: string) => void;
 }
 
 const Hero: React.FC<HeroProps> = ({ onNavigate }) => {
-  const [isStealthMode, setIsStealthMode] = useState(false);
+  const { account, isConnected } = useWallet();
+  const { 
+    balance, 
+    canClaim, 
+    isClaiming, 
+    timeUntilNextClaim,
+    checkBalance, 
+    claimUSDC,
+    formatTimeUntilNextClaim 
+  } = useUSDCFaucet(account);
+
+  // Check USDC balance when wallet connects
+  useEffect(() => {
+    if (isConnected && account) {
+      checkBalance(account);
+    }
+  }, [isConnected, account, checkBalance]);
 
   const features = [
     {
@@ -53,15 +72,31 @@ const Hero: React.FC<HeroProps> = ({ onNavigate }) => {
           </div>
 
           <div className="flex items-center space-x-4">
-            <Button 
-              variant="ghost" 
-              className="btn-stealth"
-              onClick={() => setIsStealthMode(!isStealthMode)}
-            >
-              {isStealthMode ? <EyeOff className="w-4 h-4 mr-2" /> : <Eye className="w-4 h-4 mr-2" />}
-              {isStealthMode ? 'Stealth ON' : 'Stealth OFF'}
-            </Button>
-            <Button className="btn-glass">Connect Wallet</Button>
+            {isConnected && (
+              <Button 
+                onClick={claimUSDC}
+                disabled={!canClaim || isClaiming}
+                className={`${canClaim && !isClaiming ? 'btn-hero' : 'btn-disabled'} text-sm px-4 py-2`}
+              >
+                {isClaiming ? (
+                  <>
+                    <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white mr-2"></div>
+                    Claiming...
+                  </>
+                ) : canClaim ? (
+                  <>
+                    <Coins className="w-3 h-3 mr-2" />
+                    Claim USDC
+                  </>
+                ) : (
+                  <>
+                    <Coins className="w-3 h-3 mr-2" />
+                    {formatTimeUntilNextClaim(timeUntilNextClaim)}
+                  </>
+                )}
+              </Button>
+            )}
+            <WalletButton />
           </div>
         </div>
 
@@ -94,7 +129,7 @@ const Hero: React.FC<HeroProps> = ({ onNavigate }) => {
           {features.map((feature, index) => (
             <div 
               key={feature.title}
-              className={`card-glass hover-lift animate-scale-in ${isStealthMode ? 'stealth-mode' : ''}`}
+              className="card-glass hover-lift animate-scale-in"
               style={{ animationDelay: `${index * 0.1}s` }}
             >
               <feature.icon className="w-8 h-8 text-neon-purple mb-4" />

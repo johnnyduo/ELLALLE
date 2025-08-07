@@ -9,7 +9,14 @@
     "type": "git",
     "url": "https://github.com/johnnyduo/stealthflow-aiview.git"
   },
-  "keywords": ["hedera", "trading", "defi", "privacy", "zero-knowledge", "web3"],
+  "keywords": [
+    "hedera",
+    "trading",
+    "defi",
+    "privacy",
+    "zero-knowledge",
+    "web3"
+  ],
   "author": "ELLALLE Team",
   "license": "MIT",
   "scripts": {
@@ -23,7 +30,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "clean": "rm -rf dist",
-    "analyze": "yarn build && npx vite-bundle-analyzer dist",
+    "analyze": "yarn build && yarn vite-bundle-analyzer dist",
     "security:audit": "yarn audit --level moderate",
     "deps:update": "yarn upgrade-interactive --latest",
     "deps:check": "yarn outdated",
@@ -66,6 +73,7 @@
     "cmdk": "^1.1.1",
     "date-fns": "^3.6.0",
     "embla-carousel-react": "^8.6.0",
+    "ethers": "6.15.0",
     "input-otp": "^1.4.2",
     "lucide-react": "^0.462.0",
     "next-themes": "^0.3.0",

@@ -177,23 +177,62 @@ export const useDarkPool = (): UseDarkPoolReturn => {
         throw new Error('No wallet connected');
       }
 
+      console.log('Starting deposit process...');
+      console.log('Deposit details:', {
+        amount,
+        from: accounts[0],
+        to: CONTRACT_CONFIG.hederaDarkPoolManager
+      });
+
+      // Validate amount
+      const amountNum = parseFloat(amount);
+      if (isNaN(amountNum) || amountNum <= 0) {
+        throw new Error('Invalid deposit amount');
+      }
+
       // Convert amount to wei (hex)
       const amountWei = toWei(amount);
       const amountHex = `0x${BigInt(amountWei).toString(16)}`;
       
-      console.log('Depositing:', { amount, amountWei, amountHex });
+      console.log('Amount conversion:', { amount, amountWei, amountHex });
       
+      // Validate the amount is not too large
+      if (BigInt(amountWei) <= 0) {
+        throw new Error('Deposit amount must be greater than 0');
+      }
+
       // Call depositToDarkpool() on HederaDarkPoolManager
       const txParams = {
         from: accounts[0],
         to: CONTRACT_CONFIG.hederaDarkPoolManager,
         value: amountHex,
         data: CONTRACT_ABI.depositToDarkpool,
-        gas: toHex(500000), // Increased gas limit for safety
-        gasPrice: toHex(20000000000), // 20 gwei
+        gas: toHex(800000), // Increased gas limit for safety
+        gasPrice: toHex(50000000000), // 50 gwei for better inclusion
       };
       
       console.log('Transaction params:', txParams);
+      
+      // Validate transaction parameters
+      if (!txParams.to || !txParams.data || !txParams.from) {
+        throw new Error('Invalid transaction parameters');
+      }
+
+      // Estimate gas first to catch potential errors
+      try {
+        const gasEstimate = await provider.request({
+          method: 'eth_estimateGas',
+          params: [txParams],
+        });
+        console.log('Gas estimate:', gasEstimate);
+        
+        // Update gas limit with estimate + buffer
+        txParams.gas = toHex(Math.floor(parseInt(gasEstimate, 16) * 1.2));
+      } catch (gasError: any) {
+        console.error('Gas estimation failed:', gasError);
+        // If gas estimation fails, the transaction will likely fail
+        throw new Error(`Transaction validation failed: ${gasError.message || 'Unable to estimate gas'}`);
+      }
       
       const txHash = await provider.request({
         method: 'eth_sendTransaction',
@@ -216,12 +255,25 @@ export const useDarkPool = (): UseDarkPoolReturn => {
       
     } catch (error: any) {
       console.error('Deposit error:', error);
+      
+      // Provide more specific error messages
+      let errorMessage = 'Deposit failed';
+      if (error.code === -32603 && error.message?.includes('400')) {
+        errorMessage = 'Transaction rejected by network. Please check your balance and contract permissions.';
+      } else if (error.code === 4001) {
+        errorMessage = 'Transaction was cancelled by user';
+      } else if (error.message?.includes('insufficient')) {
+        errorMessage = 'Insufficient balance or gas fees';
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
       setState(prev => ({
         ...prev,
         loading: false,
-        error: error.message || 'Deposit failed',
+        error: errorMessage,
       }));
-      throw error;
+      throw new Error(errorMessage);
     }
   }, []);
 
@@ -237,24 +289,75 @@ export const useDarkPool = (): UseDarkPoolReturn => {
         throw new Error('No wallet connected');
       }
 
-      // Convert amount to wei and encode as parameter
+      console.log('Starting withdrawal process...');
+      console.log('Withdrawal details:', {
+        amount,
+        from: accounts[0],
+        to: CONTRACT_CONFIG.hederaDarkPoolManager,
+        contractAddress: CONTRACT_CONFIG.hederaDarkPoolManager
+      });
+
+      // Validate amount
+      const amountNum = parseFloat(amount);
+      if (isNaN(amountNum) || amountNum <= 0) {
+        throw new Error('Invalid withdrawal amount');
+      }
+
+      // Convert amount to wei (18 decimals for HBAR)
       const amountWei = toWei(amount);
+      console.log('Amount conversion:', { amount, amountWei });
+      
+      // Validate the amount is not too large
+      if (BigInt(amountWei) <= 0) {
+        throw new Error('Withdrawal amount must be greater than 0');
+      }
+
+      // Properly encode the function call data
+      const functionSelector = CONTRACT_ABI.withdrawFromDarkpool; // 0x8c7b6fb0
       const amountHex = BigInt(amountWei).toString(16).padStart(64, '0');
+      const callData = functionSelector + amountHex;
       
-      console.log('Withdrawing:', { amount, amountWei, amountHex });
+      console.log('Transaction data:', {
+        functionSelector,
+        amountHex,
+        fullCallData: callData,
+        dataLength: callData.length
+      });
       
-      // Call withdrawFromDarkpool(uint256 amount) on HederaDarkPoolManager
+      // Prepare transaction parameters with more conservative gas settings
       const txParams = {
         from: accounts[0],
         to: CONTRACT_CONFIG.hederaDarkPoolManager,
         value: '0x0',
-        data: CONTRACT_ABI.withdrawFromDarkpool + amountHex,
-        gas: toHex(500000),
-        gasPrice: toHex(20000000000), // 20 gwei
+        data: callData,
+        gas: toHex(800000), // Increased gas limit
+        gasPrice: toHex(50000000000), // 50 gwei for better chance of inclusion
       };
       
-      console.log('Withdrawal transaction params:', txParams);
+      console.log('Final transaction params:', txParams);
       
+      // Validate transaction parameters
+      if (!txParams.to || !txParams.data || !txParams.from) {
+        throw new Error('Invalid transaction parameters');
+      }
+
+      // Estimate gas first to catch potential errors
+      try {
+        const gasEstimate = await provider.request({
+          method: 'eth_estimateGas',
+          params: [txParams],
+        });
+        console.log('Gas estimate:', gasEstimate);
+        
+        // Update gas limit with estimate + buffer
+        txParams.gas = toHex(Math.floor(parseInt(gasEstimate, 16) * 1.2));
+      } catch (gasError: any) {
+        console.error('Gas estimation failed:', gasError);
+        // If gas estimation fails, the transaction will likely fail
+        throw new Error(`Transaction validation failed: ${gasError.message || 'Unable to estimate gas'}`);
+      }
+      
+      // Send the transaction
       const txHash = await provider.request({
         method: 'eth_sendTransaction',
         params: [txParams],
@@ -276,12 +379,25 @@ export const useDarkPool = (): UseDarkPoolReturn => {
       
     } catch (error: any) {
       console.error('Withdrawal error:', error);
+      
+      // Provide more specific error messages
+      let errorMessage = 'Withdrawal failed';
+      if (error.code === -32603 && error.message?.includes('400')) {
+        errorMessage = 'Transaction rejected by network. Please check your balance and contract permissions.';
+      } else if (error.code === 4001) {
+        errorMessage = 'Transaction was cancelled by user';
+      } else if (error.message?.includes('insufficient')) {
+        errorMessage = 'Insufficient balance or gas fees';
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
       setState(prev => ({
         ...prev,
         loading: false,
-        error: error.message || 'Withdrawal failed',
+        error: errorMessage,
       }));
-      throw error;
+      throw new Error(errorMessage);
     }
   }, []);
 

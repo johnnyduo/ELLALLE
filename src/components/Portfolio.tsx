@@ -1,9 +1,9 @@
 
-import React, { useState } from 'react';
-import { Wallet, TrendingUp, TrendingDown, PieChart, BarChart3, Shield, Eye, EyeOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
+import { BarChart3, Eye, EyeOff, PieChart, Shield, TrendingDown, TrendingUp, Wallet } from 'lucide-react';
+import { useState } from 'react';
 
 const Portfolio = () => {
   const [isPrivateMode, setIsPrivateMode] = useState(false);
@@ -17,12 +17,12 @@ const Portfolio = () => {
     { symbol: 'BTC', name: 'Bitcoin', amount: 2.5, value: 108125.75, change: 3.45, allocation: 45 },
     { symbol: 'ETH', name: 'Ethereum', value: 38640.20, change: -1.23, allocation: 28 },
     { symbol: 'SOL', name: 'Solana', value: 9875.30, change: 5.67, allocation: 12 },
-    { symbol: 'USDT', name: 'Tether', value: 18780.00, change: 0.01, allocation: 15 },
+    { symbol: 'USDC', name: 'USD Coin', value: 18780.00, change: 0.01, allocation: 15 },
   ];
 
   const positions = [
     { 
-      asset: 'BTC/USDT', 
+      asset: 'BTC/USDC', 
       type: 'Long', 
       size: '1.2 BTC', 
       entry: 42500, 
@@ -32,7 +32,7 @@ const Portfolio = () => {
       margin: 8500
     },
     { 
-      asset: 'ETH/USDT', 
+      asset: 'ETH/USDC', 
       type: 'Short', 
       size: '5.0 ETH', 
       entry: 2620, 

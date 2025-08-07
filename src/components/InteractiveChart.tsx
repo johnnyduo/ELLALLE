@@ -1,6 +1,7 @@
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { formatPrice } from '@/lib/web3';
 import { Activity, Lock, Shield, TrendingDown, TrendingUp, Zap } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
@@ -24,15 +25,37 @@ interface InteractiveChartProps {
 
 // Generate realistic price data for demo
 const generatePriceData = (symbol: string, currentPrice: number, days: number = 30): ChartData[] => {
-  const basePrice = currentPrice || (symbol === 'BTC' ? 43250 : symbol === 'ETH' ? 2580 : 180);
+  // Use actual current price if available, otherwise fallback to realistic defaults
+  let basePrice = currentPrice;
+  
+  // Only use fallback prices if currentPrice is 0 or invalid
+  if (!basePrice || basePrice <= 0) {
+    const fallbackPrices: { [key: string]: number } = {
+      'BTC': 116000,  // Updated to realistic current BTC price
+      'ETH': 3800,    // Updated to realistic current ETH price  
+      'SOL': 172,     // Updated to realistic current SOL price
+      'AVAX': 22,     // Updated to realistic current AVAX price
+      'HBAR': 0.25,   // Updated to realistic current HBAR price
+      'ADA': 0.78,    // Updated to realistic current ADA price
+      'DOT': 3.79,    // Updated to realistic current DOT price
+      'MATIC': 0.29,  // Updated to realistic current MATIC price
+    };
+    
+    const symbolKey = symbol.split('/')[0]; // Extract base symbol (e.g., 'BTC' from 'BTC/USDC')
+    basePrice = fallbackPrices[symbolKey] || 180;
+  }
+  
   const data: ChartData[] = [];
   const now = Date.now();
   
+  // Reduce volatility for more stable chart data
+  const volatility = 0.02; // 2% daily volatility instead of 5%
+  
   for (let i = days; i >= 0; i--) {
     const timestamp = now - (i * 24 * 60 * 60 * 1000);
-    const volatility = 0.05; // 5% daily volatility
     const trend = (Math.random() - 0.5) * volatility;
-    const price = basePrice * (1 + trend + Math.sin(i / 7) * 0.02);
+    const seasonalVariation = Math.sin(i / 7) * 0.01; // 1% seasonal variation instead of 2%
+    const price = basePrice * (1 + trend + seasonalVariation);
     
     data.push({
       timestamp,
@@ -64,6 +87,12 @@ export const InteractiveChart: React.FC<InteractiveChartProps> = ({
 
   // Initialize data
   useEffect(() => {
+    console.log(`🎯 Initializing chart data for ${symbol}:`, {
+      hasExternalData: externalData && externalData.length > 0,
+      currentPrice,
+      externalDataLength: externalData?.length || 0
+    });
+    
     const chartData = externalData && externalData.length > 0 
       ? externalData.map(d => ({
           ...d,
@@ -77,53 +106,155 @@ export const InteractiveChart: React.FC<InteractiveChartProps> = ({
     
     setData(chartData);
     
-    if (chartData.length > 0) {
+    // Use the actual current price from market data, not chart data
+    setRealTimePrice(currentPrice);
+    
+    if (chartData.length > 1) {
       const latest = chartData[chartData.length - 1];
-      const previous = chartData.length > 1 ? chartData[chartData.length - 2] : chartData[0];
+      const previous = chartData[chartData.length - 2];
       
-      setRealTimePrice(latest.price);
-      setPriceChange(latest.price - previous.price);
-      setPriceChangePercent(((latest.price - previous.price) / previous.price) * 100);
+      // Calculate change based on current price vs previous chart point
+      setPriceChange(currentPrice - previous.price);
+      setPriceChangePercent(((currentPrice - previous.price) / previous.price) * 100);
     }
+    
+    console.log(`📊 Chart data initialized with ${chartData.length} points, latest price: $${currentPrice}`);
   }, [externalData, symbol, currentPrice]);
 
-  // Simulate real-time price updates
+  // Sync with current price updates (when market data refreshes)
   useEffect(() => {
-    const interval = setInterval(() => {
-      if (data.length === 0) return;
-      
+    setRealTimePrice(currentPrice);
+    
+    // Update the latest chart point to match current price
+    if (data.length > 0) {
       setData(prevData => {
-        const lastPoint = prevData[prevData.length - 1];
-        const volatility = 0.002; // 0.2% volatility per update
-        const change = (Math.random() - 0.5) * volatility;
-        const newPrice = lastPoint.price * (1 + change);
+        const newData = [...prevData];
+        const lastIndex = newData.length - 1;
         
-        const newPoint: ChartData = {
-          ...lastPoint,
-          timestamp: Date.now(),
-          price: Number(newPrice.toFixed(2)),
-          close: Number(newPrice.toFixed(2)),
+        // Update the last point to match current market price
+        newData[lastIndex] = {
+          ...newData[lastIndex],
+          price: currentPrice,
+          close: currentPrice,
         };
         
-        setRealTimePrice(newPoint.price);
-        setPriceChange(newPoint.price - lastPoint.price);
-        setPriceChangePercent(((newPoint.price - lastPoint.price) / lastPoint.price) * 100);
-        
-        // Keep last 100 points for real-time chart
-        const newData = [...prevData.slice(-99), newPoint];
         return newData;
       });
-    }, 2000); // Update every 2 seconds
-    
-    return () => clearInterval(interval);
-  }, [data.length]);
-
-  const formatPrice = (price: number) => {
-    return `$${price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-  };
+      
+      // Calculate price change based on current price vs previous point
+      if (data.length > 1) {
+        const previous = data[data.length - 2];
+        setPriceChange(currentPrice - previous.price);
+        setPriceChangePercent(((currentPrice - previous.price) / previous.price) * 100);
+      }
+    }
+  }, [currentPrice]);
 
   const formatTime = (timestamp: number) => {
-    return new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const date = new Date(timestamp);
+    
+    // Format based on selected timeframe
+    switch (timeframe) {
+      case '5M':
+      case '1H':
+        return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      case '1D':
+        return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+      case '1W':
+      case '1M':
+        return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+      default:
+        // Fallback: show time for recent data, date for older data
+        const now = new Date();
+        const diffDays = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24));
+        
+        if (diffDays === 0) {
+          return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        } else if (diffDays < 7) {
+          return date.toLocaleDateString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' });
+        } else {
+          return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+        }
+    }
+  };
+
+  const formatYAxisPrice = (value: number, symbol: string = '') => {
+    // Handle different price ranges for different trading pairs
+    if (value >= 10000) {
+      // BTC range: $10K - $100K+
+      return `$${(value / 1000).toFixed(0)}K`;
+    } else if (value >= 1000) {
+      // ETH range: $1K - $10K  
+      return `$${(value / 1000).toFixed(1)}K`;
+    } else if (value >= 100) {
+      // SOL, AVAX range: $100 - $1000
+      return `$${value.toFixed(0)}`;
+    } else if (value >= 10) {
+      // DOT range: $10 - $100
+      return `$${value.toFixed(1)}`;
+    } else if (value >= 1) {
+      // ADA, MATIC range: $1 - $10
+      return `$${value.toFixed(2)}`;
+    } else if (value >= 0.1) {
+      // HBAR range: $0.1 - $1
+      return `$${value.toFixed(3)}`;
+    } else if (value >= 0.01) {
+      // Small coins: $0.01 - $0.1
+      return `$${value.toFixed(4)}`;
+    } else if (value >= 0.001) {
+      // Very small coins: $0.001 - $0.01
+      return `$${value.toFixed(5)}`;
+    } else {
+      // Micro coins: < $0.001
+      return `$${value.toFixed(6)}`;
+    }
+  };
+
+  // Wrapper for recharts tick formatter
+  const priceTickFormatter = (value: any) => formatYAxisPrice(value, symbol);
+
+  const calculateYAxisDomain = (data: ChartData[], chartType: string, symbol: string = '') => {
+    if (chartType === 'volume') return ['auto', 'auto'];
+    
+    if (data.length === 0) return ['auto', 'auto'];
+    
+    const prices = data.map(d => d.price);
+    const minPrice = Math.min(...prices);
+    const maxPrice = Math.max(...prices);
+    const priceRange = maxPrice - minPrice;
+    
+    // Dynamic padding based on price range and symbol
+    let paddingPercent = 0.02; // Default 2%
+    
+    // Adjust padding based on price level for better visualization
+    if (maxPrice >= 10000) {
+      // BTC: larger padding for high-value assets
+      paddingPercent = 0.03;
+    } else if (maxPrice < 1) {
+      // HBAR, small coins: smaller padding for precision
+      paddingPercent = 0.05;
+    } else if (priceRange / maxPrice < 0.01) {
+      // Very stable price: increase padding for visibility
+      paddingPercent = 0.1;
+    }
+    
+    const padding = priceRange * paddingPercent;
+    const paddedMin = Math.max(0, minPrice - padding);
+    const paddedMax = maxPrice + padding;
+    
+    // Return numbers, not strings, so Recharts can properly calculate ticks
+    return [paddedMin, paddedMax];
+  };
+
+  const getOptimalTickCount = (symbol: string, priceRange: number) => {
+    // Adjust tick count based on symbol and price range
+    if (symbol.includes('BTC')) {
+      return 6; // More ticks for BTC's large range
+    } else if (symbol.includes('HBAR') || priceRange < 1) {
+      return 5; // Fewer ticks for small price ranges
+    } else {
+      return 6; // Standard tick count
+    }
   };
 
   const CustomTooltip = ({ active, payload, label }: any) => {
@@ -285,12 +416,22 @@ export const InteractiveChart: React.FC<InteractiveChartProps> = ({
                   tickFormatter={formatTime}
                   stroke="#9CA3AF"
                   fontSize={12}
+                  tick={{ fill: '#9CA3AF' }}
+                  axisLine={{ stroke: '#4B5563' }}
+                  tickLine={{ stroke: '#4B5563' }}
+                  interval="preserveStartEnd"
+                  minTickGap={50}
                 />
                 <YAxis 
-                  domain={['dataMin - 100', 'dataMax + 100']}
-                  tickFormatter={(value) => `$${value}`}
+                  domain={calculateYAxisDomain(data, 'line', symbol)}
+                  tickFormatter={priceTickFormatter}
                   stroke="#9CA3AF"
                   fontSize={12}
+                  tick={{ fill: '#9CA3AF' }}
+                  axisLine={{ stroke: '#4B5563' }}
+                  tickLine={{ stroke: '#4B5563' }}
+                  width={70}
+                  tickCount={6}
                 />
                 <Tooltip content={<CustomTooltip />} />
                 <Line 
@@ -310,11 +451,21 @@ export const InteractiveChart: React.FC<InteractiveChartProps> = ({
                   tickFormatter={formatTime}
                   stroke="#9CA3AF"
                   fontSize={12}
+                  tick={{ fill: '#9CA3AF' }}
+                  axisLine={{ stroke: '#4B5563' }}
+                  tickLine={{ stroke: '#4B5563' }}
+                  interval="preserveStartEnd"
+                  minTickGap={50}
                 />
                 <YAxis 
-                  tickFormatter={(value) => `${(value / 1000).toFixed(0)}K`}
+                  tickFormatter={(value) => `${(value / 1000000).toFixed(1)}M`}
                   stroke="#9CA3AF"
                   fontSize={12}
+                  tick={{ fill: '#9CA3AF' }}
+                  axisLine={{ stroke: '#4B5563' }}
+                  tickLine={{ stroke: '#4B5563' }}
+                  width={70}
+                  tickCount={5}
                 />
                 <Tooltip content={<CustomTooltip />} />
                 <Bar dataKey="volume" fill="#06b6d4" opacity={0.7} />
@@ -327,12 +478,22 @@ export const InteractiveChart: React.FC<InteractiveChartProps> = ({
                   tickFormatter={formatTime}
                   stroke="#9CA3AF"
                   fontSize={12}
+                  tick={{ fill: '#9CA3AF' }}
+                  axisLine={{ stroke: '#4B5563' }}
+                  tickLine={{ stroke: '#4B5563' }}
+                  interval="preserveStartEnd"
+                  minTickGap={50}
                 />
                 <YAxis 
-                  domain={['dataMin - 100', 'dataMax + 100']}
-                  tickFormatter={(value) => `$${value}`}
+                  domain={calculateYAxisDomain(data, 'area', symbol)}
+                  tickFormatter={priceTickFormatter}
                   stroke="#9CA3AF"
                   fontSize={12}
+                  tick={{ fill: '#9CA3AF' }}
+                  axisLine={{ stroke: '#4B5563' }}
+                  tickLine={{ stroke: '#4B5563' }}
+                  width={70}
+                  tickCount={6}
                 />
                 <Tooltip content={<CustomTooltip />} />
                 <Area 

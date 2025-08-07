@@ -1,3 +1,4 @@
+import { CacheStatusIndicator } from '@/components/CacheStatusIndicator';
 import { InteractiveChart } from '@/components/InteractiveChart';
 import { PerpTradingInterface } from '@/components/PerpTradingInterface';
 import { Button } from '@/components/ui/button';
@@ -5,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useDarkPool } from '@/hooks/useDarkPool';
 import { useMarketData } from '@/hooks/useMarketData';
 import { useWallet } from '@/hooks/useWallet';
+import { formatPercentage, formatPrice } from '@/lib/web3';
 import { Activity, AlertTriangle, Brain, CheckCircle, Minus, Plus, RefreshCw, Shield, Target, Wallet } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
@@ -30,7 +32,7 @@ const TradingDashboard = () => {
     refreshData,
     setSelectedSymbol,
     selectedSymbol,
-  } = useMarketData('BTC/USDT');
+  } = useMarketData('BTC/USDC');
 
   const { account, isConnected: walletConnected, connect: connectWallet, balance: walletBalance } = useWallet();
   
@@ -74,17 +76,50 @@ const TradingDashboard = () => {
 
   // Handle deposit
   const handleDeposit = async () => {
-    if (!depositAmount || parseFloat(depositAmount) <= 0) return;
+    if (!depositAmount || parseFloat(depositAmount) <= 0) {
+      toast.error('Please enter a valid deposit amount');
+      return;
+    }
+    
     if (!account) {
       setTxStatus({ type: 'deposit', hash: null, status: 'error', message: 'Please connect your wallet first' });
+      return;
+    }
+    
+    const walletBalanceNum = parseFloat(walletBalance || '0');
+    const depositAmountNum = parseFloat(depositAmount);
+    
+    console.log('Deposit validation:', {
+      depositAmount: depositAmountNum,
+      walletBalance: walletBalanceNum,
+      account
+    });
+    
+    if (depositAmountNum > walletBalanceNum) {
+      const errorMsg = `Insufficient wallet balance. Available: ${walletBalanceNum.toFixed(4)} HBAR, Requested: ${depositAmountNum.toFixed(4)} HBAR`;
+      console.error(errorMsg);
+      setTxStatus({ 
+        type: 'deposit', 
+        hash: null, 
+        status: 'error', 
+        message: errorMsg
+      });
+      toast.error(errorMsg);
       return;
     }
     
     setTxStatus({ type: 'deposit', hash: null, status: 'pending', message: 'Initiating deposit...' });
     
     try {
+      console.log('Attempting deposit:', {
+        amount: depositAmount,
+        account,
+        contract: 'HederaDarkPoolManager'
+      });
+      
       const txHash = await deposit(depositAmount);
       console.log('Deposit successful:', txHash);
+      
       setTxStatus({ 
         type: 'deposit', 
         hash: txHash, 
@@ -93,20 +128,31 @@ const TradingDashboard = () => {
       });
       setDepositAmount('');
       setShowDepositModal(false);
+      
+      toast.success(`Deposit successful! ${depositAmount} HBAR`);
+      
     } catch (error: any) {
       console.error('Deposit failed:', error);
+      
+      const errorMessage = error.message || 'Deposit failed';
       setTxStatus({ 
         type: 'deposit', 
         hash: null, 
         status: 'error', 
-        message: error.message || 'Deposit failed' 
+        message: errorMessage
       });
+      
+      toast.error(`Deposit failed: ${errorMessage}`);
     }
   };
 
   // Handle withdraw
   const handleWithdraw = async () => {
-    if (!withdrawAmount || parseFloat(withdrawAmount) <= 0) return;
+    if (!withdrawAmount || parseFloat(withdrawAmount) <= 0) {
+      toast.error('Please enter a valid withdrawal amount');
+      return;
+    }
+    
     if (!account) {
       setTxStatus({ type: 'withdraw', hash: null, status: 'error', message: 'Please connect your wallet first' });
       return;
@@ -115,21 +161,45 @@ const TradingDashboard = () => {
     const availableBalance = parseFloat(darkPoolBalance?.available || '0');
     const withdrawAmountNum = parseFloat(withdrawAmount);
     
+    console.log('Withdrawal validation:', {
+      withdrawAmount: withdrawAmountNum,
+      availableBalance,
+      darkPoolBalance
+    });
+    
     if (withdrawAmountNum > availableBalance) {
+      const errorMsg = `Insufficient balance. Available: ${availableBalance.toFixed(4)} HBAR, Requested: ${withdrawAmountNum.toFixed(4)} HBAR`;
+      console.error(errorMsg);
       setTxStatus({ 
         type: 'withdraw', 
         hash: null, 
         status: 'error', 
-        message: `Insufficient balance. Available: ${availableBalance} HBAR` 
+        message: errorMsg
       });
+      toast.error(errorMsg);
       return;
+    }
+    
+    // Refresh balance before attempting withdrawal
+    try {
+      console.log('Refreshing balance before withdrawal...');
+      await checkBalance(account);
+    } catch (balanceError) {
+      console.warn('Failed to refresh balance before withdrawal:', balanceError);
     }
     
     setTxStatus({ type: 'withdraw', hash: null, status: 'pending', message: 'Initiating withdrawal...' });
     
     try {
+      console.log('Attempting withdrawal:', {
+        amount: withdrawAmount,
+        account,
+        contract: 'HederaDarkPoolManager'
+      });
+      
       const txHash = await withdraw(withdrawAmount);
       console.log('Withdrawal successful:', txHash);
+      
       setTxStatus({ 
         type: 'withdraw', 
         hash: txHash, 
@@ -138,14 +208,21 @@ const TradingDashboard = () => {
       });
       setWithdrawAmount('');
       setShowWithdrawModal(false);
+      
+      toast.success(`Withdrawal successful! ${withdrawAmount} HBAR`);
+      
     } catch (error: any) {
       console.error('Withdrawal failed:', error);
+      
+      const errorMessage = error.message || 'Withdrawal failed';
       setTxStatus({ 
         type: 'withdraw', 
         hash: null, 
         status: 'error', 
-        message: error.message || 'Withdrawal failed' 
+        message: errorMessage
       });
+      
+      toast.error(`Withdrawal failed: ${errorMessage}`);
     }
   };
 
@@ -392,17 +469,11 @@ const TradingDashboard = () => {
               {systemStatus && (
                 <div className="mt-4 pt-4 border-t border-white/10">
                   <div className="text-sm text-muted-foreground mb-2">System Status</div>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-xs">
                     <div>
                       <div className="text-muted-foreground">Status</div>
                       <div className={systemStatus.exists ? "text-green-400" : "text-red-400"}>
                         {systemStatus.exists ? "Active" : "Inactive"}
-                      </div>
-                    </div>
-                    <div>
-                      <div className="text-muted-foreground">Paused</div>
-                      <div className={!systemStatus.paused ? "text-green-400" : "text-red-400"}>
-                        {!systemStatus.paused ? "No" : "Yes"}
                       </div>
                     </div>
                     <div>
@@ -412,9 +483,9 @@ const TradingDashboard = () => {
                       </div>
                     </div>
                     <div>
-                      <div className="text-muted-foreground">Owner</div>
-                      <div className="text-green-400 text-xs">
-                        {systemStatus.owner.slice(0, 6)}...{systemStatus.owner.slice(-4)}
+                      <div className="text-muted-foreground">Paused</div>
+                      <div className={!systemStatus.paused ? "text-green-400" : "text-red-400"}>
+                        {!systemStatus.paused ? "No" : "Yes"}
                       </div>
                     </div>
                   </div>
@@ -504,15 +575,14 @@ const TradingDashboard = () => {
                 >
                   <span className="font-semibold text-sm">{asset.symbol.toUpperCase()}</span>
                   <span className="text-xs text-muted-foreground">
-                    ${asset.price?.toFixed(2)}
+                    {formatPrice(asset.price || 0)}
                   </span>
                   <span className={`text-xs ${
                     (asset.change24h || 0) >= 0 
                       ? 'text-green-400' 
                       : 'text-red-400'
                   }`}>
-                    {(asset.change24h || 0) >= 0 ? '+' : ''}
-                    {asset.change24h?.toFixed(2)}%
+                    {formatPercentage(asset.change24h || 0)}
                   </span>
                 </Button>
               ))}
@@ -589,26 +659,10 @@ const TradingDashboard = () => {
                       <Button
                         size="sm"
                         variant="ghost"
-                        onClick={() => setDepositAmount('1')}
-                        className="text-xs px-2 py-1"
-                      >
-                        1
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
                         onClick={() => setDepositAmount('5')}
                         className="text-xs px-2 py-1"
                       >
                         5
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => setDepositAmount('10')}
-                        className="text-xs px-2 py-1"
-                      >
-                        10
                       </Button>
                       {walletBalance && parseFloat(walletBalance) > 0 && (
                         <Button
@@ -693,24 +747,6 @@ const TradingDashboard = () => {
                       Available: {darkPoolBalance?.available || '0.0'} HBAR
                     </div>
                     <div className="flex space-x-1">
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => setWithdrawAmount('1')}
-                        className="text-xs px-2 py-1"
-                        disabled={!darkPoolBalance?.available || parseFloat(darkPoolBalance.available) < 1}
-                      >
-                        1
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => setWithdrawAmount('5')}
-                        className="text-xs px-2 py-1"
-                        disabled={!darkPoolBalance?.available || parseFloat(darkPoolBalance.available) < 5}
-                      >
-                        5
-                      </Button>
                       {darkPoolBalance?.available && parseFloat(darkPoolBalance.available) > 0 && (
                         <Button
                           size="sm"
@@ -765,6 +801,9 @@ const TradingDashboard = () => {
           </div>
         )}
       </div>
+      
+      {/* Cache Status Indicator (only in development) */}
+      {process.env.NODE_ENV === 'development' && <CacheStatusIndicator />}
     </div>
   );
 };

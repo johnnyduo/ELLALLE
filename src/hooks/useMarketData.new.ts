@@ -34,63 +34,49 @@ export const useMarketData = (initialSymbol: string = 'BTC/USDC'): UseMarketData
 
   const refreshData = useCallback(async (force: boolean = false) => {
     try {
-      const coinIds = Object.values(COIN_IDS);
-      const selectedCoinId = COIN_IDS[selectedSymbol as keyof typeof COIN_IDS];
-      
       if (!force) {
         // Check if we have cached data first to show immediately
+        const coinIds = Object.values(COIN_IDS);
         const cachedMarketData = marketDataCache.getMarketData(coinIds);
+        const selectedCoinId = COIN_IDS[selectedSymbol as keyof typeof COIN_IDS];
         const cachedChartData = selectedCoinId ? marketDataCache.getChartData(selectedCoinId, 1) : null;
         
-        // Set cached data immediately if available
-        if (cachedMarketData && cachedMarketData.length > 0) {
+        if (cachedMarketData) {
           setMarketData(cachedMarketData);
           setLoading(false);
         }
         
-        if (cachedChartData && cachedChartData.length > 0) {
+        if (cachedChartData) {
           setChartData(cachedChartData);
         }
         
-        // If we have both fresh cached data, skip the API call
-        if (cachedMarketData && cachedMarketData.length > 0 && 
-            cachedChartData && cachedChartData.length > 0) {
+        // If we have both cached data, no need to show loading
+        if (cachedMarketData && cachedChartData) {
           setError(null);
           return;
         }
       }
 
-      // Always fetch fresh data on first load or when forced
       setLoading(true);
       setError(null);
 
-      console.log('🔄 Fetching fresh market data...');
-
       // Fetch market data for all coins
+      const coinIds = Object.values(COIN_IDS);
       const markets = await fetchMarketData(coinIds);
-      if (markets && markets.length > 0) {
-        setMarketData(markets);
-      }
+      setMarketData(markets);
 
       // Fetch chart data for selected symbol
+      const selectedCoinId = COIN_IDS[selectedSymbol as keyof typeof COIN_IDS];
       if (selectedCoinId) {
         const chart = await fetchChartData(selectedCoinId, 1); // 1 day
-        if (chart && chart.length > 0) {
-          setChartData(chart);
-        }
+        setChartData(chart);
       }
-      
-      setError(null);
     } catch (err) {
       console.error('Error fetching market data:', err);
       setError(err instanceof Error ? err.message : 'Failed to fetch market data');
       
-      // Fallback to mock data only if we don't have any cached data
-      const cachedMarketData = marketDataCache.getMarketData(Object.values(COIN_IDS));
-      if (!cachedMarketData || cachedMarketData.length === 0) {
-        console.log('🎭 Using mock data as fallback');
-        setMarketData(getMockMarketData());
-      }
+      // Fallback to mock data
+      setMarketData(getMockMarketData());
       setChartData([]);
     } finally {
       setLoading(false);
@@ -104,18 +90,14 @@ export const useMarketData = (initialSymbol: string = 'BTC/USDC'): UseMarketData
       if (coinId) {
         // Check cache first
         const cachedChart = marketDataCache.getChartData(coinId, 1);
-        if (cachedChart && cachedChart.length > 0) {
-          console.log(`📊 Using cached chart data for ${symbol}`);
+        if (cachedChart) {
           setChartData(cachedChart);
           return;
         }
         
         // Fetch fresh data if not in cache
-        console.log(`🔄 Fetching fresh chart data for ${symbol}`);
         const chart = await fetchChartData(coinId, 1);
-        if (chart && chart.length > 0) {
-          setChartData(chart);
-        }
+        setChartData(chart);
       }
     } catch (err) {
       console.error('Error fetching chart data:', err);
