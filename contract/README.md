@@ -91,11 +91,11 @@ Use the ultra-minimal `DeploymentHelper.sol`:
 
 ## 🔧 **Network Configuration**
 
-**Hedera Testnet:**
-- **Chain ID:** 296
-- **RPC:** https://testnet.hashio.io/api
+**Hedera Previewnet:**
+- **Chain ID:** 297
+- **RPC:** https://previewnet.hashio.io/api
 - **Currency:** HBAR
-- **Explorer:** https://hashscan.io/testnet
+- **Explorer:** https://hashscan.io/previewnet
 
 ## 📊 **Auto-Initialized Markets**
 

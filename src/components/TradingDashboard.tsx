@@ -1,14 +1,27 @@
-
+import { InteractiveChart } from '@/components/InteractiveChart';
+import { PerpTradingInterface } from '@/components/PerpTradingInterface';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { MiniChart, SparklineChart } from '@/components/ui/chart-mini';
+import { useDarkPool } from '@/hooks/useDarkPool';
 import { useMarketData } from '@/hooks/useMarketData';
-import { formatMarketData } from '@/lib/coingecko';
-import { Activity, BarChart3, Brain, RefreshCw, Shield, Target, TrendingDown, TrendingUp } from 'lucide-react';
-import { useState } from 'react';
+import { useWallet } from '@/hooks/useWallet';
+import { Activity, AlertTriangle, Brain, CheckCircle, Minus, Plus, RefreshCw, Shield, Target, Wallet } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { toast } from 'sonner';
 
 const TradingDashboard = () => {
   const [isPrivateMode, setIsPrivateMode] = useState(false);
+  const [depositAmount, setDepositAmount] = useState('');
+  const [withdrawAmount, setWithdrawAmount] = useState('');
+  const [showDepositModal, setShowDepositModal] = useState(false);
+  const [showWithdrawModal, setShowWithdrawModal] = useState(false);
+  const [txStatus, setTxStatus] = useState<{
+    type: 'deposit' | 'withdraw' | null;
+    hash: string | null;
+    status: 'pending' | 'success' | 'error' | null;
+    message: string | null;
+  }>({ type: null, hash: null, status: null, message: null });
+  
   const {
     marketData,
     chartData,
@@ -19,336 +32,738 @@ const TradingDashboard = () => {
     selectedSymbol,
   } = useMarketData('BTC/USDT');
 
-  // Get current selected asset data
-  const selectedAsset = marketData.find(asset => asset.symbol === selectedSymbol) || marketData[0];
+  const { account, isConnected: walletConnected, connect: connectWallet, balance: walletBalance } = useWallet();
   
-  const positions = [
-    { asset: 'BTC/USDT', side: 'Long', size: '0.5', entry: 42800, pnl: 225.50, pnlPercent: 1.05 },
-    { asset: 'ETH/USDT', side: 'Short', size: '2.0', entry: 2620, pnl: -79.50, pnlPercent: -1.52 },
-  ];
+  const {
+    isConnected: darkPoolConnected,
+    balance: darkPoolBalance,
+    markets: darkPoolMarkets,
+    systemStatus,
+    loading: darkPoolLoading,
+    error: darkPoolError,
+    connect: connectDarkPool,
+    deposit,
+    withdraw,
+    checkBalance,
+    refreshSystemStatus,
+  } = useDarkPool();
 
-  const recentTrades = [
-    { asset: 'BTC/USDT', side: 'Buy', size: '0.1', price: 43200, time: '14:23:45' },
-    { asset: 'SOL/USDT', side: 'Sell', size: '10.0', price: 98.50, time: '14:21:32' },
-    { asset: 'ETH/USDT', side: 'Buy', size: '1.5', price: 2575, time: '14:19:18' },
-  ];
+  // Auto-connect DarkPool when wallet connects
+  useEffect(() => {
+    if (walletConnected && account && !darkPoolConnected && !darkPoolLoading) {
+      connectDarkPool();
+    }
+  }, [walletConnected, account, darkPoolConnected, darkPoolLoading, connectDarkPool]);
+
+  // Auto-check balance when DarkPool connects
+  useEffect(() => {
+    if (darkPoolConnected && account) {
+      checkBalance(account);
+    }
+  }, [darkPoolConnected, account, checkBalance]);
+
+  // Clear transaction status after 10 seconds
+  useEffect(() => {
+    if (txStatus.status === 'success' || txStatus.status === 'error') {
+      const timer = setTimeout(() => {
+        setTxStatus({ type: null, hash: null, status: null, message: null });
+      }, 10000);
+      return () => clearTimeout(timer);
+    }
+  }, [txStatus.status]);
+
+  // Handle deposit
+  const handleDeposit = async () => {
+    if (!depositAmount || parseFloat(depositAmount) <= 0) return;
+    if (!account) {
+      setTxStatus({ type: 'deposit', hash: null, status: 'error', message: 'Please connect your wallet first' });
+      return;
+    }
+    
+    setTxStatus({ type: 'deposit', hash: null, status: 'pending', message: 'Initiating deposit...' });
+    
+    try {
+      const txHash = await deposit(depositAmount);
+      console.log('Deposit successful:', txHash);
+      setTxStatus({ 
+        type: 'deposit', 
+        hash: txHash, 
+        status: 'success', 
+        message: `Successfully deposited ${depositAmount} HBAR` 
+      });
+      setDepositAmount('');
+      setShowDepositModal(false);
+    } catch (error: any) {
+      console.error('Deposit failed:', error);
+      setTxStatus({ 
+        type: 'deposit', 
+        hash: null, 
+        status: 'error', 
+        message: error.message || 'Deposit failed' 
+      });
+    }
+  };
+
+  // Handle withdraw
+  const handleWithdraw = async () => {
+    if (!withdrawAmount || parseFloat(withdrawAmount) <= 0) return;
+    if (!account) {
+      setTxStatus({ type: 'withdraw', hash: null, status: 'error', message: 'Please connect your wallet first' });
+      return;
+    }
+    
+    const availableBalance = parseFloat(darkPoolBalance?.available || '0');
+    const withdrawAmountNum = parseFloat(withdrawAmount);
+    
+    if (withdrawAmountNum > availableBalance) {
+      setTxStatus({ 
+        type: 'withdraw', 
+        hash: null, 
+        status: 'error', 
+        message: `Insufficient balance. Available: ${availableBalance} HBAR` 
+      });
+      return;
+    }
+    
+    setTxStatus({ type: 'withdraw', hash: null, status: 'pending', message: 'Initiating withdrawal...' });
+    
+    try {
+      const txHash = await withdraw(withdrawAmount);
+      console.log('Withdrawal successful:', txHash);
+      setTxStatus({ 
+        type: 'withdraw', 
+        hash: txHash, 
+        status: 'success', 
+        message: `Successfully withdrew ${withdrawAmount} HBAR` 
+      });
+      setWithdrawAmount('');
+      setShowWithdrawModal(false);
+    } catch (error: any) {
+      console.error('Withdrawal failed:', error);
+      setTxStatus({ 
+        type: 'withdraw', 
+        hash: null, 
+        status: 'error', 
+        message: error.message || 'Withdrawal failed' 
+      });
+    }
+  };
+
+  const selectedAsset = marketData.find(asset => asset.symbol === selectedSymbol) || marketData[0];
+
+  if (loading && !marketData.length) {
+    return (
+      <div className="min-h-screen bg-dark p-4 lg:p-8">
+        <div className="max-w-7xl mx-auto">
+          <div className="flex items-center justify-center min-h-[400px]">
+            <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-neon-purple"></div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-dark p-4 lg:p-8">
+        <div className="max-w-7xl mx-auto">
+          <div className="text-center text-red-400 p-8">
+            <p>Error loading market data: {error}</p>
+            <Button onClick={refreshData} className="mt-4">
+              Try Again
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-space-gradient p-6">
-      <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="flex justify-between items-center mb-8">
+    <div className="min-h-screen bg-dark p-4 lg:p-8">
+      <div className="max-w-7xl mx-auto space-y-6">
+        {/* Header with controls */}
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-bold gradient-text mb-2">Trading Dashboard</h1>
-            <p className="text-muted-foreground">Real-time perpetual futures trading with privacy</p>
+            <h1 className="text-3xl font-bold gradient-text">Trading Dashboard</h1>
+            <p className="text-muted-foreground">
+              Advanced perpetual DEX with privacy features
+            </p>
           </div>
           
           <div className="flex items-center space-x-4">
-            <Button 
-              variant="outline"
-              className="btn-glass"
-              onClick={refreshData}
-              disabled={loading}
+            {/* DarkPool Connection Status */}
+            <div className="flex items-center space-x-2 px-3 py-2 rounded-lg glass">
+              {darkPoolConnected ? (
+                <>
+                  <CheckCircle className="w-4 h-4 text-green-400" />
+                  <span className="text-sm text-green-400">DarkPool Connected</span>
+                </>
+              ) : (
+                <>
+                  <AlertTriangle className="w-4 h-4 text-yellow-400" />
+                  <span className="text-sm text-yellow-400">DarkPool Disconnected</span>
+                </>
+              )}
+            </div>
+
+            {/* Wallet Connection */}
+            <Button
+              onClick={walletConnected ? undefined : connectWallet}
+              variant={walletConnected ? "outline" : "default"}
+              className={walletConnected ? "glass" : "btn-hero"}
             >
-              <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-              {loading ? 'Loading...' : 'Refresh'}
+              <Wallet className="w-4 h-4 mr-2" />
+              {walletConnected ? `${account?.slice(0, 6)}...${account?.slice(-4)}` : 'Connect Wallet'}
             </Button>
-            <Button 
-              variant={isPrivateMode ? "default" : "outline"}
-              className={isPrivateMode ? "btn-stealth" : "btn-glass"}
+
+            {/* Privacy Toggle */}
+            <Button
               onClick={() => setIsPrivateMode(!isPrivateMode)}
+              variant={isPrivateMode ? "default" : "outline"}
+              className={isPrivateMode ? "btn-hero" : "glass"}
             >
               <Shield className="w-4 h-4 mr-2" />
-              {isPrivateMode ? 'Private Mode' : 'Public Mode'}
+              {isPrivateMode ? 'Private' : 'Public'}
             </Button>
-            <Button className="btn-hero">
-              <Brain className="w-4 h-4 mr-2" />
-              AI Assistant
+            
+            <Button onClick={refreshData} variant="outline" className="glass">
+              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
             </Button>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-          {/* Asset List */}
-          <div className="lg:col-span-1">
-            <Card className="card-glass">
-              <CardHeader>
-                <CardTitle className="text-lg font-semibold">Markets</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {error && (
-                  <div className="text-center p-4 text-red-400 bg-red-500/10 rounded-lg">
-                    <p className="text-sm">{error}</p>
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      onClick={refreshData}
-                      className="mt-2"
-                    >
-                      Retry
-                    </Button>
-                  </div>
+        {/* Transaction Status Notification */}
+        {txStatus.status && (
+          <Card className={`card-glass border-l-4 ${
+            txStatus.status === 'success' ? 'border-l-green-400' : 
+            txStatus.status === 'error' ? 'border-l-red-400' : 
+            'border-l-yellow-400'
+          }`}>
+            <CardContent className="p-4">
+              <div className="flex items-center space-x-3">
+                {txStatus.status === 'pending' && (
+                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-yellow-400"></div>
+                )}
+                {txStatus.status === 'success' && (
+                  <CheckCircle className="w-5 h-5 text-green-400" />
+                )}
+                {txStatus.status === 'error' && (
+                  <AlertTriangle className="w-5 h-5 text-red-400" />
                 )}
                 
-                {loading ? (
-                  <div className="space-y-3">
-                    {[...Array(4)].map((_, i) => (
-                      <div key={i} className="animate-pulse">
-                        <div className="h-16 bg-white/5 rounded-lg"></div>
-                      </div>
-                    ))}
+                <div className="flex-1">
+                  <div className={`font-medium ${
+                    txStatus.status === 'success' ? 'text-green-400' : 
+                    txStatus.status === 'error' ? 'text-red-400' : 
+                    'text-yellow-400'
+                  }`}>
+                    {txStatus.type === 'deposit' ? 'Deposit' : 'Withdrawal'} {
+                      txStatus.status === 'pending' ? 'In Progress' :
+                      txStatus.status === 'success' ? 'Successful' :
+                      'Failed'
+                    }
                   </div>
-                ) : (
-                  marketData.map((asset) => {
-                    const formatted = formatMarketData(asset);
-                    return (
-                      <div 
-                        key={asset.symbol}
-                        className={`p-3 rounded-lg cursor-pointer transition-all duration-300 ${
-                          selectedSymbol === asset.symbol 
-                            ? 'bg-neon-purple/20 border border-neon-purple/40' 
-                            : 'hover:bg-white/5'
-                        } ${isPrivateMode ? 'privacy-blur' : ''}`}
-                        onClick={() => setSelectedSymbol(asset.symbol)}
+                  <div className="text-sm text-muted-foreground">
+                    {txStatus.message}
+                  </div>
+                  {txStatus.hash && (
+                    <div className="text-xs text-muted-foreground mt-1">
+                      <a 
+                        href={`https://hashscan.io/previewnet/transaction/${txStatus.hash}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-neon-purple hover:underline"
                       >
-                        <div className="flex justify-between items-start mb-2">
-                          <div className="flex items-center space-x-2">
-                            <span className="font-semibold">{asset.symbol}</span>
-                            {asset.change24h >= 0 ? (
-                              <TrendingUp className="w-4 h-4 text-profit" />
-                            ) : (
-                              <TrendingDown className="w-4 h-4 text-loss" />
-                            )}
-                          </div>
-                          <div className="w-12">
-                            <SparklineChart 
-                              data={asset.sparkline || []} 
-                              width={48} 
-                              height={16}
-                            />
-                          </div>
-                        </div>
-                        
-                        <div className="text-sm text-muted-foreground mb-1">
-                          {formatted.formattedPrice}
-                        </div>
-                        
-                        <div className="flex justify-between items-center">
-                          <div className={`text-sm font-medium ${
-                            asset.change24h >= 0 ? 'text-profit' : 'text-loss'
-                          }`}>
-                            {asset.change24h >= 0 ? '+' : ''}{asset.change24h.toFixed(2)}%
-                          </div>
-                          <div className="text-xs text-muted-foreground">
-                            {formatted.formattedVolume}
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })
-                )}
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Main Trading Area */}
-          <div className="lg:col-span-3 space-y-6">
-            {/* Chart */}
-            <Card className="card-glass">
-              <CardHeader className="pb-4">
-                <div className="flex justify-between items-center">
-                  <CardTitle className="text-lg font-semibold flex items-center">
-                    <BarChart3 className="w-5 h-5 mr-2 text-neon-purple" />
-                    {selectedSymbol} Chart
-                  </CardTitle>
-                  {selectedAsset && (
-                    <div className="text-right">
-                      <div className="text-2xl font-bold">
-                        {formatMarketData(selectedAsset).formattedPrice}
-                      </div>
-                      <div className={`text-sm font-medium ${
-                        selectedAsset.change24h >= 0 ? 'text-profit' : 'text-loss'
-                      }`}>
-                        {selectedAsset.change24h >= 0 ? '+' : ''}{selectedAsset.change24h.toFixed(2)}%
-                      </div>
+                        View on HashScan →
+                      </a>
                     </div>
                   )}
                 </div>
-              </CardHeader>
-              <CardContent className="p-6">
-                {loading ? (
-                  <div className="h-80 bg-gradient-to-br from-space-700/50 to-space-800/50 rounded-lg flex items-center justify-center">
-                    <div className="text-center">
-                      <RefreshCw className="w-16 h-16 text-neon-purple/50 mx-auto mb-4 animate-spin" />
-                      <h3 className="text-xl font-semibold gradient-text mb-2">Loading Chart...</h3>
-                      <p className="text-muted-foreground">Fetching latest market data</p>
-                    </div>
+                
+                {txStatus.status !== 'pending' && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setTxStatus({ type: null, hash: null, status: null, message: null })}
+                    className="text-muted-foreground hover:text-white"
+                  >
+                    ×
+                  </Button>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* DarkPool Status Section */}
+        {walletConnected && (
+          <Card className="card-glass">
+            <CardHeader>
+              <CardTitle className="flex items-center space-x-2">
+                <Shield className="w-5 h-5 text-neon-purple" />
+                <span>DarkPool Status</span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                {/* Connection Status */}
+                <div className="space-y-2">
+                  <div className="text-sm text-muted-foreground">Connection</div>
+                  <div className="flex items-center space-x-2">
+                    {darkPoolConnected ? (
+                      <>
+                        <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+                        <span className="text-green-400 font-medium">Connected</span>
+                      </>
+                    ) : (
+                      <>
+                        <div className="w-2 h-2 bg-red-400 rounded-full"></div>
+                        <span className="text-red-400 font-medium">Disconnected</span>
+                        <Button
+                          size="sm"
+                          onClick={connectDarkPool}
+                          className="ml-2 btn-hero text-xs"
+                          disabled={darkPoolLoading}
+                        >
+                          {darkPoolLoading ? 'Connecting...' : 'Connect'}
+                        </Button>
+                      </>
+                    )}
                   </div>
-                ) : chartData.length > 0 ? (
-                  <div className="h-80 relative overflow-hidden rounded-lg bg-gradient-to-br from-space-700/30 to-space-800/30">
-                    <MiniChart 
-                      data={chartData} 
-                      width={800} 
-                      height={320}
-                      className="absolute inset-0"
-                    />
-                    <div className="absolute top-4 left-4 bg-black/20 backdrop-blur-sm rounded-lg p-3">
-                      <div className="text-sm text-muted-foreground">24h Range</div>
-                      <div className="flex items-center space-x-4 mt-1">
-                        <span className="text-sm">
-                          L: ${selectedAsset?.low24h?.toLocaleString() || 'N/A'}
-                        </span>
-                        <span className="text-sm">
-                          H: ${selectedAsset?.high24h?.toLocaleString() || 'N/A'}
-                        </span>
+                </div>
+
+                {/* Balance */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="text-sm text-muted-foreground">DarkPool Balance</div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => account && checkBalance(account)}
+                      disabled={darkPoolLoading}
+                      className="h-6 w-6 p-0 text-muted-foreground hover:text-white"
+                    >
+                      <RefreshCw className={`w-3 h-3 ${darkPoolLoading ? 'animate-spin' : ''}`} />
+                    </Button>
+                  </div>
+                  <div className="text-lg font-semibold">
+                    {darkPoolBalance ? 
+                      (parseFloat(darkPoolBalance.available || '0') + parseFloat(darkPoolBalance.locked || '0')).toFixed(4) 
+                      : '-.----'
+                    } HBAR
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    Available: {darkPoolBalance?.available || '-.----'} HBAR
+                  </div>
+                  {darkPoolBalance?.locked && parseFloat(darkPoolBalance.locked) > 0 && (
+                    <div className="text-xs text-muted-foreground">
+                      Locked: {darkPoolBalance.locked} HBAR
+                    </div>
+                  )}
+                </div>
+
+                {/* Actions */}
+                <div className="space-y-2">
+                  <div className="text-sm text-muted-foreground">Actions</div>
+                  <div className="flex space-x-2">
+                    <Button
+                      size="sm"
+                      onClick={() => setShowDepositModal(true)}
+                      disabled={!darkPoolConnected || darkPoolLoading}
+                      className="btn-hero"
+                    >
+                      <Plus className="w-4 h-4 mr-1" />
+                      Deposit
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setShowWithdrawModal(true)}
+                      disabled={!darkPoolConnected || darkPoolLoading || !darkPoolBalance?.available || parseFloat(darkPoolBalance.available) <= 0}
+                    >
+                      <Minus className="w-4 h-4 mr-1" />
+                      Withdraw
+                    </Button>
+                  </div>
+                </div>
+              </div>
+
+              {/* System Status */}
+              {systemStatus && (
+                <div className="mt-4 pt-4 border-t border-white/10">
+                  <div className="text-sm text-muted-foreground mb-2">System Status</div>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
+                    <div>
+                      <div className="text-muted-foreground">Status</div>
+                      <div className={systemStatus.exists ? "text-green-400" : "text-red-400"}>
+                        {systemStatus.exists ? "Active" : "Inactive"}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-muted-foreground">Paused</div>
+                      <div className={!systemStatus.paused ? "text-green-400" : "text-red-400"}>
+                        {!systemStatus.paused ? "No" : "Yes"}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-muted-foreground">Markets</div>
+                      <div className="text-green-400">
+                        {systemStatus.marketCount}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-muted-foreground">Owner</div>
+                      <div className="text-green-400 text-xs">
+                        {systemStatus.owner.slice(0, 6)}...{systemStatus.owner.slice(-4)}
                       </div>
                     </div>
                   </div>
-                ) : (
-                  <div className="h-80 bg-gradient-to-br from-space-700/50 to-space-800/50 rounded-lg flex items-center justify-center relative overflow-hidden">
-                    <div className="absolute inset-0 bg-gradient-to-r from-neon-purple/10 via-transparent to-neon-blue/10" />
-                    <div className="text-center z-10">
-                      <Activity className="w-16 h-16 text-neon-purple/50 mx-auto mb-4" />
-                      <h3 className="text-xl font-semibold gradient-text mb-2">Chart Loading</h3>
-                      <p className="text-muted-foreground">Interactive price chart will appear here</p>
-                      <Button 
-                        variant="outline" 
-                        className="mt-4 btn-glass"
-                        onClick={refreshData}
-                      >
-                        <RefreshCw className="w-4 h-4 mr-2" />
-                        Retry
-                      </Button>
-                    </div>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+                </div>
+              )}
 
-            {/* Order Panel and Positions */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Order Panel */}
-              <Card className="card-glass">
-                <CardHeader>
-                  <CardTitle className="text-lg font-semibold flex items-center">
-                    <Target className="w-5 h-5 mr-2 text-neon-purple" />
-                    Place Order
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="grid grid-cols-2 gap-2">
-                    <Button className="btn-glass text-profit">Long</Button>
-                    <Button variant="outline" className="hover:bg-loss/10">Short</Button>
+              {/* DarkPool Error Display */}
+              {darkPoolError && (
+                <div className="mt-4 pt-4 border-t border-white/10">
+                  <div className="flex items-center space-x-2 text-red-400">
+                    <AlertTriangle className="w-4 h-4" />
+                    <span className="text-sm font-medium">DarkPool Error</span>
+                  </div>
+                  <div className="text-xs text-red-300 mt-1">
+                    {darkPoolError}
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={connectDarkPool}
+                    className="mt-2 text-xs"
+                    disabled={darkPoolLoading}
+                  >
+                    Retry Connection
+                  </Button>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Market Overview */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <Card className="card-glass">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Total Volume</CardTitle>
+              <Activity className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">
+                ${marketData.reduce((acc, asset) => acc + (asset.volume24h || 0), 0).toLocaleString()}
+              </div>
+              <p className="text-xs text-muted-foreground">24h trading volume</p>
+            </CardContent>
+          </Card>
+
+          <Card className="card-glass">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Market Cap</CardTitle>
+              <Target className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">
+                ${marketData.reduce((acc, asset) => acc + (asset.marketCap || 0), 0).toLocaleString()}
+              </div>
+              <p className="text-xs text-muted-foreground">Total market capitalization</p>
+            </CardContent>
+          </Card>
+
+          <Card className="card-glass">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">AI Signals</CardTitle>
+              <Brain className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-neon-purple">Active</div>
+              <p className="text-xs text-muted-foreground">ML predictions enabled</p>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Asset Selector */}
+        <Card className="card-glass">
+          <CardHeader>
+            <CardTitle>Select Trading Pair</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+              {marketData.map((asset, index) => (
+                <Button
+                  key={asset.symbol}
+                  onClick={() => setSelectedSymbol(asset.symbol)}
+                  variant={selectedSymbol === asset.symbol ? "default" : "outline"}
+                  className={`p-3 h-auto flex flex-col items-center space-y-1 ${
+                    selectedSymbol === asset.symbol ? 'btn-hero' : 'glass'
+                  }`}
+                >
+                  <span className="font-semibold text-sm">{asset.symbol.toUpperCase()}</span>
+                  <span className="text-xs text-muted-foreground">
+                    ${asset.price?.toFixed(2)}
+                  </span>
+                  <span className={`text-xs ${
+                    (asset.change24h || 0) >= 0 
+                      ? 'text-green-400' 
+                      : 'text-red-400'
+                  }`}>
+                    {(asset.change24h || 0) >= 0 ? '+' : ''}
+                    {asset.change24h?.toFixed(2)}%
+                  </span>
+                </Button>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Interactive Chart */}
+        <Card className="card-glass">
+          <CardHeader>
+            <CardTitle className="flex items-center space-x-2">
+              <Activity className="w-5 h-5 text-neon-purple" />
+              <span>Price Chart</span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <InteractiveChart
+              symbol={selectedSymbol}
+              data={chartData}
+              isPrivateMode={isPrivateMode}
+              currentPrice={marketData.find(m => m.symbol === selectedSymbol)?.price || 0}
+            />
+          </CardContent>
+        </Card>
+
+        {/* Perpetual Trading Interface */}
+        <PerpTradingInterface
+          selectedSymbol={selectedSymbol}
+          currentPrice={marketData.find(m => m.symbol === selectedSymbol)?.price || 0}
+          isPrivateMode={isPrivateMode}
+          onPrivateModeChange={setIsPrivateMode}
+          walletBalance={walletBalance || '0.0'}
+          onTrade={async (order) => {
+            // Simulate order processing
+            toast.success(`${order.side.toUpperCase()} order placed for ${order.size} ${order.symbol}`);
+            
+            // In real implementation, this would call the contract
+            console.log('Placing order:', order);
+            
+            // Simulate network delay
+            await new Promise(resolve => setTimeout(resolve, 1000));
+          }}
+        />
+
+        {/* Deposit Modal */}
+        {showDepositModal && (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
+            <Card className="card-glass w-full max-w-md mx-4">
+              <CardHeader>
+                <CardTitle className="flex items-center space-x-2">
+                  <Plus className="w-5 h-5 text-neon-purple" />
+                  <span>Deposit HBAR</span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div>
+                  <label className="text-sm font-medium text-muted-foreground mb-2 block">
+                    Amount (HBAR)
+                  </label>
+                  <input
+                    type="number"
+                    value={depositAmount}
+                    onChange={(e) => setDepositAmount(e.target.value)}
+                    placeholder="0.0"
+                    step="0.1"
+                    min="0"
+                    className="w-full glass rounded-lg p-3 text-lg font-semibold bg-transparent border border-white/10 focus:border-neon-purple/50 outline-none"
+                  />
+                  <div className="flex items-center justify-between mt-2">
+                    <div className="text-xs text-muted-foreground">
+                      Wallet Balance: {walletBalance || '0.0'} HBAR
+                    </div>
+                    <div className="flex space-x-1">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => setDepositAmount('1')}
+                        className="text-xs px-2 py-1"
+                      >
+                        1
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => setDepositAmount('5')}
+                        className="text-xs px-2 py-1"
+                      >
+                        5
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => setDepositAmount('10')}
+                        className="text-xs px-2 py-1"
+                      >
+                        10
+                      </Button>
+                      {walletBalance && parseFloat(walletBalance) > 0 && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => setDepositAmount((parseFloat(walletBalance) * 0.9).toFixed(2))}
+                          className="text-xs px-2 py-1"
+                        >
+                          Max
+                        </Button>
+                      )}
+                    </div>
                   </div>
                   
-                  <div className="space-y-3">
-                    <div>
-                      <label className="text-sm font-medium text-muted-foreground mb-1 block">
-                        Size ({selectedSymbol.split('/')[0]})
-                      </label>
-                      <div className="glass rounded-lg p-3">
-                        <div className={`text-lg font-semibold ${isPrivateMode ? 'privacy-blur' : ''}`}>
-                          {selectedSymbol.includes('BTC') ? '0.25 BTC' : 
-                           selectedSymbol.includes('ETH') ? '5.0 ETH' :
-                           selectedSymbol.includes('SOL') ? '100 SOL' : '1000 HBAR'}
-                        </div>
-                        <div className="text-sm text-muted-foreground">
-                          ≈ ${selectedAsset ? (selectedAsset.price * 0.25).toLocaleString() : '10,812.50'}
-                        </div>
-                      </div>
+                  {/* Validation Messages */}
+                  {depositAmount && parseFloat(depositAmount) > parseFloat(walletBalance || '0') && (
+                    <div className="text-xs text-red-400 mt-1">
+                      Insufficient wallet balance
                     </div>
-                    
-                    <div>
-                      <label className="text-sm font-medium text-muted-foreground mb-1 block">
-                        Leverage
-                      </label>
-                      <div className="glass rounded-lg p-3">
-                        <div className="text-lg font-semibold text-neon-orange">10x</div>
-                      </div>
+                  )}
+                  {depositAmount && parseFloat(depositAmount) <= 0 && (
+                    <div className="text-xs text-red-400 mt-1">
+                      Amount must be greater than 0
                     </div>
-                  </div>
-
-                  <Button className="w-full btn-hero">
-                    Place Long Order
+                  )}
+                </div>
+                
+                <div className="flex space-x-2">
+                  <Button 
+                    variant="outline" 
+                    className="flex-1"
+                    onClick={() => setShowDepositModal(false)}
+                  >
+                    Cancel
                   </Button>
-                </CardContent>
-              </Card>
-
-              {/* Open Positions */}
-              <Card className="card-glass">
-                <CardHeader>
-                  <CardTitle className="text-lg font-semibold">Open Positions</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-3">
-                    {positions.map((position, index) => (
-                      <div key={index} className={`card-trading ${isPrivateMode ? 'privacy-blur' : ''}`}>
-                        <div className="flex justify-between items-start mb-2">
-                          <div className="flex items-center space-x-2">
-                            <span className="font-semibold">{position.asset}</span>
-                            <span className={`px-2 py-1 rounded text-xs font-medium ${
-                              position.side === 'Long' 
-                                ? 'bg-profit/20 text-profit' 
-                                : 'bg-loss/20 text-loss'
-                            }`}>
-                              {position.side}
-                            </span>
-                          </div>
-                          <div className="text-right">
-                            <div className={`font-semibold ${
-                              position.pnl >= 0 ? 'text-profit' : 'text-loss'
-                            }`}>
-                              {position.pnl >= 0 ? '+' : ''}${position.pnl}
-                            </div>
-                            <div className={`text-xs ${
-                              position.pnlPercent >= 0 ? 'text-profit' : 'text-loss'
-                            }`}>
-                              {position.pnlPercent >= 0 ? '+' : ''}{position.pnlPercent}%
-                            </div>
-                          </div>
-                        </div>
-                        <div className="flex justify-between text-sm text-muted-foreground">
-                          <span>Size: {position.size}</span>
-                          <span>Entry: ${position.entry}</span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-
-            {/* Recent Trades */}
-            <Card className="card-glass">
-              <CardHeader>
-                <CardTitle className="text-lg font-semibold">Recent Trades</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-2">
-                  {recentTrades.map((trade, index) => (
-                    <div key={index} className={`flex items-center justify-between p-3 rounded-lg hover:bg-white/5 transition-colors ${isPrivateMode ? 'privacy-blur' : ''}`}>
-                      <div className="flex items-center space-x-3">
-                        <span className={`px-2 py-1 rounded text-xs font-medium ${
-                          trade.side === 'Buy' 
-                            ? 'bg-profit/20 text-profit' 
-                            : 'bg-loss/20 text-loss'
-                        }`}>
-                          {trade.side}
-                        </span>
-                        <span className="font-medium">{trade.asset}</span>
-                        <span className="text-muted-foreground">Size: {trade.size}</span>
-                      </div>
-                      <div className="text-right">
-                        <div className="font-medium">${trade.price.toLocaleString()}</div>
-                        <div className="text-xs text-muted-foreground">{trade.time}</div>
-                      </div>
-                    </div>
-                  ))}
+                  <Button 
+                    className="flex-1 btn-hero"
+                    onClick={handleDeposit}
+                    disabled={
+                      !depositAmount || 
+                      parseFloat(depositAmount) <= 0 || 
+                      parseFloat(depositAmount) > parseFloat(walletBalance || '0') ||
+                      darkPoolLoading || 
+                      txStatus.status === 'pending'
+                    }
+                  >
+                    {txStatus.status === 'pending' && txStatus.type === 'deposit' ? 'Processing...' : 
+                     darkPoolLoading ? 'Processing...' : 'Deposit'}
+                  </Button>
                 </div>
               </CardContent>
             </Card>
           </div>
-        </div>
+        )}
+
+        {/* Withdraw Modal */}
+        {showWithdrawModal && (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
+            <Card className="card-glass w-full max-w-md mx-4">
+              <CardHeader>
+                <CardTitle className="flex items-center space-x-2">
+                  <Minus className="w-5 h-5 text-neon-purple" />
+                  <span>Withdraw HBAR</span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div>
+                  <label className="text-sm font-medium text-muted-foreground mb-2 block">
+                    Amount (HBAR)
+                  </label>
+                  <input
+                    type="number"
+                    value={withdrawAmount}
+                    onChange={(e) => setWithdrawAmount(e.target.value)}
+                    placeholder="0.0"
+                    step="0.1"
+                    min="0"
+                    className="w-full glass rounded-lg p-3 text-lg font-semibold bg-transparent border border-white/10 focus:border-neon-purple/50 outline-none"
+                  />
+                  <div className="flex items-center justify-between mt-2">
+                    <div className="text-xs text-muted-foreground">
+                      Available: {darkPoolBalance?.available || '0.0'} HBAR
+                    </div>
+                    <div className="flex space-x-1">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => setWithdrawAmount('1')}
+                        className="text-xs px-2 py-1"
+                        disabled={!darkPoolBalance?.available || parseFloat(darkPoolBalance.available) < 1}
+                      >
+                        1
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => setWithdrawAmount('5')}
+                        className="text-xs px-2 py-1"
+                        disabled={!darkPoolBalance?.available || parseFloat(darkPoolBalance.available) < 5}
+                      >
+                        5
+                      </Button>
+                      {darkPoolBalance?.available && parseFloat(darkPoolBalance.available) > 0 && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => setWithdrawAmount(darkPoolBalance.available)}
+                          className="text-xs px-2 py-1"
+                        >
+                          Max
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                  
+                  {/* Validation Messages */}
+                  {withdrawAmount && parseFloat(withdrawAmount) > parseFloat(darkPoolBalance?.available || '0') && (
+                    <div className="text-xs text-red-400 mt-1">
+                      Insufficient DarkPool balance
+                    </div>
+                  )}
+                  {withdrawAmount && parseFloat(withdrawAmount) <= 0 && (
+                    <div className="text-xs text-red-400 mt-1">
+                      Amount must be greater than 0
+                    </div>
+                  )}
+                </div>
+                
+                <div className="flex space-x-2">
+                  <Button 
+                    variant="outline" 
+                    className="flex-1"
+                    onClick={() => setShowWithdrawModal(false)}
+                  >
+                    Cancel
+                  </Button>
+                  <Button 
+                    className="flex-1 btn-hero"
+                    onClick={handleWithdraw}
+                    disabled={
+                      !withdrawAmount || 
+                      parseFloat(withdrawAmount) <= 0 || 
+                      parseFloat(withdrawAmount) > parseFloat(darkPoolBalance?.available || '0') ||
+                      darkPoolLoading || 
+                      txStatus.status === 'pending'
+                    }
+                  >
+                    {txStatus.status === 'pending' && txStatus.type === 'withdraw' ? 'Processing...' : 
+                     darkPoolLoading ? 'Processing...' : 'Withdraw'}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -27,7 +27,7 @@
     "security:audit": "yarn audit --level moderate",
     "deps:update": "yarn upgrade-interactive --latest",
     "deps:check": "yarn outdated",
-    "hedera:add-network": "echo 'Add Hedera Testnet to MetaMask manually or the app will prompt'",
+    "hedera:add-network": "echo 'Add Hedera Previewnet to MetaMask manually or the app will prompt'",
     "postinstall": "yarn type-check"
   },
   "dependencies": {

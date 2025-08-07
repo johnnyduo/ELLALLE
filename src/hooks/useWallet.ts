@@ -1,4 +1,4 @@
-// Simple wallet connection hook for ELLALLE platform with Hedera Testnet
+// Simple wallet connection hook for ELLALLE platform with Hedera Previewnet
 import { HEDERA_CONFIG } from '@/lib/env';
 import { useCallback, useEffect, useState } from 'react';
 
@@ -17,8 +17,8 @@ interface UseWalletReturn extends WalletState {
   switchToHedera: () => Promise<void>;
 }
 
-// Hedera Testnet configuration from environment
-const HEDERA_TESTNET = {
+// Hedera Previewnet configuration from environment
+const HEDERA_PREVIEWNET = {
   chainId: `0x${HEDERA_CONFIG.chainId.toString(16)}`, // Convert to hex
   chainName: HEDERA_CONFIG.networkName,
   nativeCurrency: {
@@ -124,7 +124,7 @@ export const useWallet = (): UseWalletReturn => {
       // Get balance
       await getBalance(accounts[0]);
 
-      // Switch to Hedera Testnet if not already on it
+      // Switch to Hedera Previewnet if not already on it
       if (parseInt(chainId, 16) !== HEDERA_CONFIG.chainId) {
         await switchToHedera();
       }
@@ -156,10 +156,10 @@ export const useWallet = (): UseWalletReturn => {
     }
 
     try {
-      // First try to switch to Hedera Testnet
+      // First try to switch to Hedera Previewnet
       await window.ethereum.request({
         method: 'wallet_switchEthereumChain',
-        params: [{ chainId: HEDERA_TESTNET.chainId }],
+        params: [{ chainId: HEDERA_PREVIEWNET.chainId }],
       });
 
       setState(prev => ({ ...prev, chainId: HEDERA_CONFIG.chainId, error: null }));
@@ -169,17 +169,17 @@ export const useWallet = (): UseWalletReturn => {
         try {
           await window.ethereum.request({
             method: 'wallet_addEthereumChain',
-            params: [HEDERA_TESTNET],
+            params: [HEDERA_PREVIEWNET],
           });
 
           setState(prev => ({ ...prev, chainId: HEDERA_CONFIG.chainId, error: null }));
         } catch (addError: any) {
-          console.error('Error adding Hedera Testnet:', addError);
-          setState(prev => ({ ...prev, error: 'Failed to add Hedera Testnet' }));
+          console.error('Error adding Hedera Previewnet:', addError);
+          setState(prev => ({ ...prev, error: 'Failed to add Hedera Previewnet' }));
         }
       } else {
-        console.error('Error switching to Hedera Testnet:', switchError);
-        setState(prev => ({ ...prev, error: 'Failed to switch to Hedera Testnet' }));
+        console.error('Error switching to Hedera Previewnet:', switchError);
+        setState(prev => ({ ...prev, error: 'Failed to switch to Hedera Previewnet' }));
       }
     }
   }, []);

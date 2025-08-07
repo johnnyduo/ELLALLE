@@ -1,21 +1,21 @@
 
-import React, { useState } from 'react';
-import Hero from '@/components/Hero';
-import TradingDashboard from '@/components/TradingDashboard';
 import AIAssistant from '@/components/AIAssistant';
 import GameHub from '@/components/GameHub';
+import Hero from '@/components/Hero';
 import Portfolio from '@/components/Portfolio';
+import TradingDashboard from '@/components/TradingDashboard';
 import { Button } from '@/components/ui/button';
-import { 
-  Shield, 
-  Brain, 
-  TrendingUp, 
-  Gamepad2, 
-  Wallet, 
-  Home,
-  Menu,
-  X
+import {
+    Brain,
+    Gamepad2,
+    Home,
+    Menu,
+    Shield,
+    TrendingUp,
+    Wallet,
+    X
 } from 'lucide-react';
+import { useState } from 'react';
 
 const Index = () => {
   const [activeSection, setActiveSection] = useState('hero');
@@ -32,7 +32,7 @@ const Index = () => {
   const renderActiveSection = () => {
     switch (activeSection) {
       case 'hero':
-        return <Hero />;
+        return <Hero onNavigate={setActiveSection} />;
       case 'trading':
         return <TradingDashboard />;
       case 'portfolio':
@@ -42,7 +42,7 @@ const Index = () => {
       case 'game':
         return <GameHub />;
       default:
-        return <Hero />;
+        return <Hero onNavigate={setActiveSection} />;
     }
   };
 

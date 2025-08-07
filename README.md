@@ -8,14 +8,14 @@ A privacy-focused trading platform featuring zero-knowledge technology, AI-power
 - **AI-Powered Insights**: Smart portfolio management with real-time market analysis  
 - **DarkPool Perpetuals**: Advanced derivatives trading with institutional-grade liquidity
 - **Gamified Experience**: Earn XP, unlock achievements, and climb leaderboards
-- **Hedera Integration**: Native support for Hedera Testnet with HBAR
+- **Hedera Integration**: Native support for Hedera Previewnet with HBAR
 - **Wallet Connection**: Seamless wallet integration via Reown AppKit
 
 ## 🛠️ Tech Stack
 
-This project is built with modern technologies for Hedera Testnet:
+This project is built with modern technologies for Hedera Previewnet:
 
-- **Blockchain**: Hedera Testnet (Chain ID: 296)
+- **Blockchain**: Hedera Previewnet (Chain ID: 297)
 - **Frontend**: React 18 + TypeScript
 - **Build Tool**: Vite
 - **Styling**: Tailwind CSS + shadcn/ui components

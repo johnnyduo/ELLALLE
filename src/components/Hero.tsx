@@ -1,9 +1,14 @@
 
 import { Button } from '@/components/ui/button';
-import { WalletButton } from '@/components/WalletButton';
-import { Brain, Gamepad2, Shield, TrendingUp } from 'lucide-react';
+import { Brain, Eye, EyeOff, Gamepad2, Shield, TrendingUp } from 'lucide-react';
+import { useState } from 'react';
 
-const Hero = () => {
+interface HeroProps {
+  onNavigate?: (section: string) => void;
+}
+
+const Hero: React.FC<HeroProps> = ({ onNavigate }) => {
+  const [isStealthMode, setIsStealthMode] = useState(false);
 
   const features = [
     {
@@ -48,7 +53,15 @@ const Hero = () => {
           </div>
 
           <div className="flex items-center space-x-4">
-            <WalletButton />
+            <Button 
+              variant="ghost" 
+              className="btn-stealth"
+              onClick={() => setIsStealthMode(!isStealthMode)}
+            >
+              {isStealthMode ? <EyeOff className="w-4 h-4 mr-2" /> : <Eye className="w-4 h-4 mr-2" />}
+              {isStealthMode ? 'Stealth ON' : 'Stealth OFF'}
+            </Button>
+            <Button className="btn-glass">Connect Wallet</Button>
           </div>
         </div>
 
@@ -64,7 +77,10 @@ const Hero = () => {
           </p>
           
           <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
-            <Button className="btn-hero animate-glow">
+            <Button 
+              className="btn-hero animate-glow"
+              onClick={() => onNavigate?.('trading')}
+            >
               Start Trading
             </Button>
             <Button className="btn-glass">
@@ -78,7 +94,7 @@ const Hero = () => {
           {features.map((feature, index) => (
             <div 
               key={feature.title}
-              className="card-glass hover-lift animate-scale-in"
+              className={`card-glass hover-lift animate-scale-in ${isStealthMode ? 'stealth-mode' : ''}`}
               style={{ animationDelay: `${index * 0.1}s` }}
             >
               <feature.icon className="w-8 h-8 text-neon-purple mb-4" />

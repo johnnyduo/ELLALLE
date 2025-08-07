@@ -55,20 +55,20 @@ export const tinybarsToHbar = (tinybars: number): number => {
 };
 
 // Get Hedera transaction info from HashScan
-export const getHederaTransactionUrl = (transactionId: string, isTestnet = true): string => {
-  const network = isTestnet ? 'testnet' : 'mainnet';
+export const getHederaTransactionUrl = (transactionId: string, isPreviewnet = true): string => {
+  const network = isPreviewnet ? 'previewnet' : 'mainnet';
   return `https://hashscan.io/${network}/transaction/${transactionId}`;
 };
 
 // Get Hedera account info from HashScan
-export const getHederaAccountUrl = (accountId: string, isTestnet = true): string => {
-  const network = isTestnet ? 'testnet' : 'mainnet';
+export const getHederaAccountUrl = (accountId: string, isPreviewnet = true): string => {
+  const network = isPreviewnet ? 'previewnet' : 'mainnet';
   return `https://hashscan.io/${network}/account/${accountId}`;
 };
 
 // Get Hedera token info from HashScan
-export const getHederaTokenUrl = (tokenId: string, isTestnet = true): string => {
-  const network = isTestnet ? 'testnet' : 'mainnet';
+export const getHederaTokenUrl = (tokenId: string, isPreviewnet = true): string => {
+  const network = isPreviewnet ? 'previewnet' : 'mainnet';
   return `https://hashscan.io/${network}/token/${tokenId}`;
 };
 
@@ -85,16 +85,16 @@ export const isValidHederaTokenId = (tokenId: string): boolean => {
 
 // Get current Hedera network info
 export const getHederaNetworkInfo = (): ChainInfo => {
-  const chainId = parseInt(import.meta.env.VITE_CHAIN_ID || '296');
-  const isTestnet = chainId === 296;
+  const chainId = parseInt(import.meta.env.VITE_CHAIN_ID || '297');
+  const isPreviewnet = chainId === 297;
   
   return {
     chainId,
-    name: isTestnet ? 'Hedera Testnet' : 'Hedera Mainnet',
+    name: isPreviewnet ? 'Hedera Previewnet' : 'Hedera Mainnet',
     currency: 'HBAR',
-    rpcUrl: import.meta.env.VITE_RPC_URL || 'https://testnet.hashio.io/api',
-    blockExplorer: import.meta.env.VITE_BLOCK_EXPLORER_URL || 'https://hashscan.io/testnet',
-    testnet: isTestnet,
+    rpcUrl: import.meta.env.VITE_RPC_URL || 'https://previewnet.hashio.io/api',
+    blockExplorer: import.meta.env.VITE_BLOCK_EXPLORER_URL || 'https://hashscan.io/previewnet',
+    testnet: isPreviewnet,
   };
 };
 

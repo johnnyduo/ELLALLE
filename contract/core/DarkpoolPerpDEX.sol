@@ -23,7 +23,7 @@ contract DarkpoolPerpDEX is IDarkpoolPerpDEX, DarkpoolStorage {
         
         // Deploy sub-contracts
         noirVerifierContract = new NoirVerifier();
-        priceOracleContract = new PythPriceConsumer(address(0)); // Mock for testnet
+        priceOracleContract = new PythPriceConsumer(address(0)); // Mock for previewnet
         
         noirVerifier = address(noirVerifierContract);
         priceOracle = address(priceOracleContract);
