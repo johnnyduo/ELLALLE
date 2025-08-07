@@ -1,0 +1,17 @@
+{
+  "recommendations": [
+    "ms-vscode.vscode-typescript-next",
+    "bradlc.vscode-tailwindcss",
+    "esbenp.prettier-vscode",
+    "ms-vscode.vscode-eslint",
+    "formulahendry.auto-rename-tag",
+    "ms-vscode.vscode-json",
+    "ms-vscode.vscode-yaml",
+    "nomicfoundation.hardhat-solidity",
+    "juanblanco.solidity",
+    "tintinweb.solidity-visual-auditor",
+    "contractshark.solidity-metrics",
+    "ms-vscode.hexeditor",
+    "ms-vscode.vscode-github-issue-notebooks"
+  ]
+}

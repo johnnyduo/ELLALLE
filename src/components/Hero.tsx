@@ -1,7 +1,8 @@
 
-import React, { useState } from 'react';
-import { Shield, TrendingUp, Brain, Gamepad2, Eye, EyeOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { WalletButton } from '@/components/WalletButton';
+import { Brain, Eye, EyeOff, Gamepad2, Shield, TrendingUp } from 'lucide-react';
+import { useState } from 'react';
 
 const Hero = () => {
   const [isStealthMode, setIsStealthMode] = useState(false);
@@ -49,6 +50,7 @@ const Hero = () => {
           </div>
 
           <div className="flex items-center space-x-4">
+            <WalletButton />
             <Button 
               variant="ghost" 
               className="btn-stealth"
