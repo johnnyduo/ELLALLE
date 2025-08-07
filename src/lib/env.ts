@@ -18,14 +18,14 @@ export const API_CONFIG = {
   wsReconnectTimeout: Number(import.meta.env.VITE_WS_RECONNECT_TIMEOUT) || 5000,
 } as const;
 
-// Hedera Network Configuration
+// Hedera Network Configuration (Updated to Previewnet)
 export const HEDERA_CONFIG = {
-  chainId: Number(import.meta.env.VITE_CHAIN_ID) || 296,
-  networkName: import.meta.env.VITE_NETWORK_NAME || 'Hedera Testnet',
-  rpcUrl: import.meta.env.VITE_RPC_URL || 'https://testnet.hashio.io/api',
-  explorerUrl: import.meta.env.VITE_BLOCK_EXPLORER_URL || 'https://hashscan.io/testnet',
+  chainId: Number(import.meta.env.VITE_CHAIN_ID) || 297,
+  networkName: import.meta.env.VITE_NETWORK_NAME || 'Hedera Previewnet',
+  rpcUrl: import.meta.env.VITE_RPC_URL || 'https://previewnet.hashio.io/api',
+  explorerUrl: import.meta.env.VITE_BLOCK_EXPLORER_URL || 'https://hashscan.io/previewnet',
   currencySymbol: import.meta.env.VITE_CURRENCY_SYMBOL || 'HBAR',
-  mirrorNodeUrl: import.meta.env.VITE_HEDERA_MIRROR_NODE_URL || 'https://testnet.mirrornode.hedera.com',
+  mirrorNodeUrl: import.meta.env.VITE_HEDERA_MIRROR_NODE_URL || 'https://previewnet.mirrornode.hedera.com',
 } as const;
 
 // Wallet Configuration
@@ -35,9 +35,23 @@ export const WALLET_CONFIG = {
   sessionTimeout: Number(import.meta.env.VITE_SESSION_TIMEOUT) || 3600000,
 } as const;
 
-// Smart Contract Addresses
+// Smart Contract Addresses (Updated for Hedera Previewnet)
 export const CONTRACT_CONFIG = {
-  trading: import.meta.env.VITE_TRADING_CONTRACT_ADDRESS || '',
+  // DarkPool Perpetual DEX - Main trading contract (Updated)
+  darkpoolPerpDEX: import.meta.env.VITE_DARKPOOL_PERP_DEX_ADDRESS || '0xC4D7B5729A9Dca7dfcaCd1BB435bba3d0B559617',
+  
+  // HederaDarkPoolManager - Event-based management interface (DEPLOYED)
+  hederaDarkPoolManager: import.meta.env.VITE_HEDERA_DARKPOOL_MANAGER_ADDRESS || '0xA04ea9A4184e8E8b05182338fF34e5DcB9b743e0',
+  
+  // SimpleDarkPoolManager - Legacy management interface (Backward compatibility)
+  simpleDarkPoolManager: import.meta.env.VITE_SIMPLE_DARKPOOL_MANAGER_ADDRESS || '0xbFFfC841011586DA5613F07292ffAb9504793A97',
+  
+  // ZKP & Oracle Contracts (Deployed addresses confirmed)
+  noirVerifier: import.meta.env.VITE_NOIR_VERIFIER_ADDRESS || '0xD2163E87d7fd20bc91e7B80D4D5AbcBad4Eb0888',
+  priceOracle: import.meta.env.VITE_PRICE_ORACLE_ADDRESS || '0xD2163E87d7fd20bc91e7B80D4D5AbcBad4Eb0888',
+  
+  // Legacy contract addresses (kept for backward compatibility)
+  trading: import.meta.env.VITE_TRADING_CONTRACT_ADDRESS || '0xC4D7B5729A9Dca7dfcaCd1BB435bba3d0B559617',
   token: import.meta.env.VITE_TOKEN_CONTRACT_ADDRESS || '',
   staking: import.meta.env.VITE_STAKING_CONTRACT_ADDRESS || '',
   ellalleToken: import.meta.env.VITE_ELLALLE_TOKEN_ADDRESS || '',
