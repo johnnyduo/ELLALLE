@@ -45,6 +45,9 @@ All contract addresses are currently empty and will be populated after deploymen
 - `VITE_MORALIS_API_KEY`: Moralis API key
 - `VITE_BINANCE_API_URL`: Binance API endpoint
 - `VITE_OPENAI_API_KEY`: OpenAI API key for AI features
+- `VITE_GEMINI_API_KEY`: Google Gemini API key for AI features
+- `VITE_GEMINI_MODEL`: Gemini model to use (default: gemini-2.0-flash-exp)
+- `VITE_GEMINI_BASE_URL`: Gemini API base URL
 - `VITE_ANALYTICS_API_KEY`: Analytics service key
 
 ### Feature Flags
@@ -89,6 +92,11 @@ import { ENV_CONFIG } from '@/lib/env';
 const chainId = ENV_CONFIG.hedera.chainId;
 const isDebug = ENV_CONFIG.app.debug;
 const tradingEnabled = ENV_CONFIG.features.trading;
+
+// AI service configuration
+const openaiKey = ENV_CONFIG.services.openai.apiKey;
+const geminiKey = ENV_CONFIG.services.gemini.apiKey;
+const geminiModel = ENV_CONFIG.services.gemini.model;
 
 // Validate environment
 import { validateEnvironment } from '@/lib/env';

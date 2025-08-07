@@ -63,6 +63,11 @@ export const SERVICES_CONFIG = {
   openai: {
     apiKey: import.meta.env.VITE_OPENAI_API_KEY || '',
   },
+  gemini: {
+    apiKey: import.meta.env.VITE_GEMINI_API_KEY || '',
+    model: import.meta.env.VITE_GEMINI_MODEL || 'gemini-2.0-flash-exp',
+    baseUrl: import.meta.env.VITE_GEMINI_BASE_URL || 'https://generativelanguage.googleapis.com/v1beta',
+  },
   analytics: {
     apiKey: import.meta.env.VITE_ANALYTICS_API_KEY || '',
   },

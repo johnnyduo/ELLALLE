@@ -34,8 +34,9 @@ VITE_APP_URL=https://ellalle.vercel.app
 # CoinGecko API for better rate limits
 VITE_COINGECKO_API_KEY=your_coingecko_api_key
 
-# OpenAI for AI features
+# AI Services
 VITE_OPENAI_API_KEY=your_openai_api_key
+VITE_GEMINI_API_KEY=your_gemini_api_key
 
 # Analytics
 VITE_ANALYTICS_API_KEY=your_analytics_key
@@ -76,11 +77,12 @@ VITE_BLOCK_EXPLORER_URL=https://hashscan.io/mainnet
 VITE_HEDERA_MIRROR_NODE_URL=https://mainnet.mirrornode.hedera.com
 ```
 
-### 3. API Keys Setup
-Get production API keys from:
-- [Reown AppKit](https://reown.com) - Wallet connection
-- [CoinGecko](https://coingecko.com/api) - Market data
-- [OpenAI](https://platform.openai.com) - AI features
+### Getting API Keys
+
+1. **Reown Project ID**: Register at [reown.com](https://reown.com)
+2. **CoinGecko API**: Register at [coingecko.com/api](https://coingecko.com/api)
+3. **OpenAI API**: Get key from [platform.openai.com](https://platform.openai.com)
+4. **Google Gemini API**: Get key from [makersuite.google.com](https://makersuite.google.com)
 
 ## Environment Files
 

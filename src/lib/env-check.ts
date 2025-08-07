@@ -54,5 +54,8 @@ Object.entries(ENV_CONFIG.contracts).forEach(([key, address]) => {
 console.log('\n🌍 External Services:');
 console.log(`CoinGecko API: ${ENV_CONFIG.services.coingecko.baseUrl}`);
 console.log(`CoinGecko Key: ${ENV_CONFIG.services.coingecko.apiKey ? '✅ Set' : '❌ Not set'}`);
+console.log(`OpenAI API: ${ENV_CONFIG.services.openai.apiKey ? '✅ Set' : '❌ Not set'}`);
+console.log(`Gemini API: ${ENV_CONFIG.services.gemini.apiKey ? '✅ Set' : '❌ Not set'}`);
+console.log(`Gemini Model: ${ENV_CONFIG.services.gemini.model}`);
 
 export default ENV_CONFIG;
