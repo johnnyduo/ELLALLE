@@ -8,7 +8,8 @@ A privacy-focused trading platform featuring zero-knowledge technology, AI-power
 - **AI-Powered Insights**: Smart portfolio management with real-time market analysis  
 - **DarkPool Perpetuals**: Advanced derivatives trading with institutional-grade liquidity
 - **Gamified Experience**: Earn XP, unlock achievements, and climb leaderboards
-- **Stealth Mode**: Enhanced privacy features for discrete trading
+- **Hedera Integration**: Native support for Hedera Testnet with HBAR
+- **Wallet Connection**: Seamless wallet integration via Reown AppKit
 
 ## 🛠️ Tech Stack
 

@@ -1,11 +1,9 @@
 
 import { Button } from '@/components/ui/button';
 import { WalletButton } from '@/components/WalletButton';
-import { Brain, Eye, EyeOff, Gamepad2, Shield, TrendingUp } from 'lucide-react';
-import { useState } from 'react';
+import { Brain, Gamepad2, Shield, TrendingUp } from 'lucide-react';
 
 const Hero = () => {
-  const [isStealthMode, setIsStealthMode] = useState(false);
 
   const features = [
     {
@@ -51,15 +49,6 @@ const Hero = () => {
 
           <div className="flex items-center space-x-4">
             <WalletButton />
-            <Button 
-              variant="ghost" 
-              className="btn-stealth"
-              onClick={() => setIsStealthMode(!isStealthMode)}
-            >
-              {isStealthMode ? <EyeOff className="w-4 h-4 mr-2" /> : <Eye className="w-4 h-4 mr-2" />}
-              {isStealthMode ? 'Stealth ON' : 'Stealth OFF'}
-            </Button>
-            <Button className="btn-glass">Connect Wallet</Button>
           </div>
         </div>
 
@@ -89,7 +78,7 @@ const Hero = () => {
           {features.map((feature, index) => (
             <div 
               key={feature.title}
-              className={`card-glass hover-lift animate-scale-in ${isStealthMode ? 'stealth-mode' : ''}`}
+              className="card-glass hover-lift animate-scale-in"
               style={{ animationDelay: `${index * 0.1}s` }}
             >
               <feature.icon className="w-8 h-8 text-neon-purple mb-4" />
