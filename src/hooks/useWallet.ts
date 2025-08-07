@@ -1,4 +1,5 @@
 // Simple wallet connection hook for ELLALLE platform with Hedera Testnet
+import { HEDERA_CONFIG } from '@/lib/env';
 import { useCallback, useEffect, useState } from 'react';
 
 interface WalletState {
@@ -16,17 +17,17 @@ interface UseWalletReturn extends WalletState {
   switchToHedera: () => Promise<void>;
 }
 
-const HEDERA_TESTNET_CHAIN_ID = 296;
-const HEDERA_TESTNET_CONFIG = {
-  chainId: `0x${HEDERA_TESTNET_CHAIN_ID.toString(16)}`, // 0x128
-  chainName: 'Hedera Testnet',
+// Hedera Testnet configuration from environment
+const HEDERA_TESTNET = {
+  chainId: `0x${HEDERA_CONFIG.chainId.toString(16)}`, // Convert to hex
+  chainName: HEDERA_CONFIG.networkName,
   nativeCurrency: {
     name: 'HBAR',
-    symbol: 'HBAR',
+    symbol: HEDERA_CONFIG.currencySymbol,
     decimals: 18,
   },
-  rpcUrls: ['https://testnet.hashio.io/api'],
-  blockExplorerUrls: ['https://hashscan.io/testnet'],
+  rpcUrls: [HEDERA_CONFIG.rpcUrl],
+  blockExplorerUrls: [HEDERA_CONFIG.explorerUrl],
 };
 
 export const useWallet = (): UseWalletReturn => {
@@ -124,7 +125,7 @@ export const useWallet = (): UseWalletReturn => {
       await getBalance(accounts[0]);
 
       // Switch to Hedera Testnet if not already on it
-      if (parseInt(chainId, 16) !== HEDERA_TESTNET_CHAIN_ID) {
+      if (parseInt(chainId, 16) !== HEDERA_CONFIG.chainId) {
         await switchToHedera();
       }
     } catch (error: any) {
@@ -158,20 +159,20 @@ export const useWallet = (): UseWalletReturn => {
       // First try to switch to Hedera Testnet
       await window.ethereum.request({
         method: 'wallet_switchEthereumChain',
-        params: [{ chainId: HEDERA_TESTNET_CONFIG.chainId }],
+        params: [{ chainId: HEDERA_TESTNET.chainId }],
       });
 
-      setState(prev => ({ ...prev, chainId: HEDERA_TESTNET_CHAIN_ID, error: null }));
+      setState(prev => ({ ...prev, chainId: HEDERA_CONFIG.chainId, error: null }));
     } catch (switchError: any) {
       // If the chain hasn't been added to MetaMask, add it
       if (switchError.code === 4902) {
         try {
           await window.ethereum.request({
             method: 'wallet_addEthereumChain',
-            params: [HEDERA_TESTNET_CONFIG],
+            params: [HEDERA_TESTNET],
           });
 
-          setState(prev => ({ ...prev, chainId: HEDERA_TESTNET_CHAIN_ID, error: null }));
+          setState(prev => ({ ...prev, chainId: HEDERA_CONFIG.chainId, error: null }));
         } catch (addError: any) {
           console.error('Error adding Hedera Testnet:', addError);
           setState(prev => ({ ...prev, error: 'Failed to add Hedera Testnet' }));

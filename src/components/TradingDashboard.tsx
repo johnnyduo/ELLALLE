@@ -1,20 +1,27 @@
 
-import React, { useState } from 'react';
-import { TrendingUp, TrendingDown, Activity, Shield, Brain, Target } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { MiniChart, SparklineChart } from '@/components/ui/chart-mini';
+import { useMarketData } from '@/hooks/useMarketData';
+import { formatMarketData } from '@/lib/coingecko';
+import { Activity, BarChart3, Brain, RefreshCw, Shield, Target, TrendingDown, TrendingUp } from 'lucide-react';
+import { useState } from 'react';
 
 const TradingDashboard = () => {
-  const [selectedAsset, setSelectedAsset] = useState('BTC/USDT');
   const [isPrivateMode, setIsPrivateMode] = useState(false);
-  
-  const assets = [
-    { symbol: 'BTC/USDT', price: 43250.50, change: 2.34, volume: '1.2B' },
-    { symbol: 'ETH/USDT', price: 2580.25, change: -1.45, volume: '890M' },
-    { symbol: 'SOL/USDT', price: 98.75, change: 5.67, volume: '345M' },
-    { symbol: 'AVAX/USDT', price: 24.80, change: -0.89, volume: '156M' },
-  ];
+  const {
+    marketData,
+    chartData,
+    loading,
+    error,
+    refreshData,
+    setSelectedSymbol,
+    selectedSymbol,
+  } = useMarketData('BTC/USDT');
 
+  // Get current selected asset data
+  const selectedAsset = marketData.find(asset => asset.symbol === selectedSymbol) || marketData[0];
+  
   const positions = [
     { asset: 'BTC/USDT', side: 'Long', size: '0.5', entry: 42800, pnl: 225.50, pnlPercent: 1.05 },
     { asset: 'ETH/USDT', side: 'Short', size: '2.0', entry: 2620, pnl: -79.50, pnlPercent: -1.52 },
@@ -38,6 +45,15 @@ const TradingDashboard = () => {
           
           <div className="flex items-center space-x-4">
             <Button 
+              variant="outline"
+              className="btn-glass"
+              onClick={refreshData}
+              disabled={loading}
+            >
+              <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+              {loading ? 'Loading...' : 'Refresh'}
+            </Button>
+            <Button 
               variant={isPrivateMode ? "default" : "outline"}
               className={isPrivateMode ? "btn-stealth" : "btn-glass"}
               onClick={() => setIsPrivateMode(!isPrivateMode)}
@@ -60,54 +76,152 @@ const TradingDashboard = () => {
                 <CardTitle className="text-lg font-semibold">Markets</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
-                {assets.map((asset) => (
-                  <div 
-                    key={asset.symbol}
-                    className={`p-3 rounded-lg cursor-pointer transition-all duration-300 ${
-                      selectedAsset === asset.symbol 
-                        ? 'bg-neon-purple/20 border border-neon-purple/40' 
-                        : 'hover:bg-white/5'
-                    } ${isPrivateMode ? 'privacy-blur' : ''}`}
-                    onClick={() => setSelectedAsset(asset.symbol)}
-                  >
-                    <div className="flex justify-between items-start mb-1">
-                      <span className="font-semibold">{asset.symbol}</span>
-                      {asset.change >= 0 ? (
-                        <TrendingUp className="w-4 h-4 text-profit" />
-                      ) : (
-                        <TrendingDown className="w-4 h-4 text-loss" />
-                      )}
-                    </div>
-                    <div className="text-sm text-muted-foreground">
-                      ${asset.price.toLocaleString()}
-                    </div>
-                    <div className={`text-sm font-medium ${
-                      asset.change >= 0 ? 'text-profit' : 'text-loss'
-                    }`}>
-                      {asset.change >= 0 ? '+' : ''}{asset.change}%
-                    </div>
-                    <div className="text-xs text-muted-foreground mt-1">
-                      Vol: {asset.volume}
-                    </div>
+                {error && (
+                  <div className="text-center p-4 text-red-400 bg-red-500/10 rounded-lg">
+                    <p className="text-sm">{error}</p>
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      onClick={refreshData}
+                      className="mt-2"
+                    >
+                      Retry
+                    </Button>
                   </div>
-                ))}
+                )}
+                
+                {loading ? (
+                  <div className="space-y-3">
+                    {[...Array(4)].map((_, i) => (
+                      <div key={i} className="animate-pulse">
+                        <div className="h-16 bg-white/5 rounded-lg"></div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  marketData.map((asset) => {
+                    const formatted = formatMarketData(asset);
+                    return (
+                      <div 
+                        key={asset.symbol}
+                        className={`p-3 rounded-lg cursor-pointer transition-all duration-300 ${
+                          selectedSymbol === asset.symbol 
+                            ? 'bg-neon-purple/20 border border-neon-purple/40' 
+                            : 'hover:bg-white/5'
+                        } ${isPrivateMode ? 'privacy-blur' : ''}`}
+                        onClick={() => setSelectedSymbol(asset.symbol)}
+                      >
+                        <div className="flex justify-between items-start mb-2">
+                          <div className="flex items-center space-x-2">
+                            <span className="font-semibold">{asset.symbol}</span>
+                            {asset.change24h >= 0 ? (
+                              <TrendingUp className="w-4 h-4 text-profit" />
+                            ) : (
+                              <TrendingDown className="w-4 h-4 text-loss" />
+                            )}
+                          </div>
+                          <div className="w-12">
+                            <SparklineChart 
+                              data={asset.sparkline || []} 
+                              width={48} 
+                              height={16}
+                            />
+                          </div>
+                        </div>
+                        
+                        <div className="text-sm text-muted-foreground mb-1">
+                          {formatted.formattedPrice}
+                        </div>
+                        
+                        <div className="flex justify-between items-center">
+                          <div className={`text-sm font-medium ${
+                            asset.change24h >= 0 ? 'text-profit' : 'text-loss'
+                          }`}>
+                            {asset.change24h >= 0 ? '+' : ''}{asset.change24h.toFixed(2)}%
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            {formatted.formattedVolume}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
               </CardContent>
             </Card>
           </div>
 
           {/* Main Trading Area */}
           <div className="lg:col-span-3 space-y-6">
-            {/* Chart Placeholder */}
+            {/* Chart */}
             <Card className="card-glass">
-              <CardContent className="p-6">
-                <div className="h-80 bg-gradient-to-br from-space-700/50 to-space-800/50 rounded-lg flex items-center justify-center relative overflow-hidden">
-                  <div className="absolute inset-0 bg-gradient-to-r from-neon-purple/10 via-transparent to-neon-blue/10" />
-                  <div className="text-center z-10">
-                    <Activity className="w-16 h-16 text-neon-purple/50 mx-auto mb-4" />
-                    <h3 className="text-xl font-semibold gradient-text mb-2">{selectedAsset} Chart</h3>
-                    <p className="text-muted-foreground">Interactive TradingView chart would be integrated here</p>
-                  </div>
+              <CardHeader className="pb-4">
+                <div className="flex justify-between items-center">
+                  <CardTitle className="text-lg font-semibold flex items-center">
+                    <BarChart3 className="w-5 h-5 mr-2 text-neon-purple" />
+                    {selectedSymbol} Chart
+                  </CardTitle>
+                  {selectedAsset && (
+                    <div className="text-right">
+                      <div className="text-2xl font-bold">
+                        {formatMarketData(selectedAsset).formattedPrice}
+                      </div>
+                      <div className={`text-sm font-medium ${
+                        selectedAsset.change24h >= 0 ? 'text-profit' : 'text-loss'
+                      }`}>
+                        {selectedAsset.change24h >= 0 ? '+' : ''}{selectedAsset.change24h.toFixed(2)}%
+                      </div>
+                    </div>
+                  )}
                 </div>
+              </CardHeader>
+              <CardContent className="p-6">
+                {loading ? (
+                  <div className="h-80 bg-gradient-to-br from-space-700/50 to-space-800/50 rounded-lg flex items-center justify-center">
+                    <div className="text-center">
+                      <RefreshCw className="w-16 h-16 text-neon-purple/50 mx-auto mb-4 animate-spin" />
+                      <h3 className="text-xl font-semibold gradient-text mb-2">Loading Chart...</h3>
+                      <p className="text-muted-foreground">Fetching latest market data</p>
+                    </div>
+                  </div>
+                ) : chartData.length > 0 ? (
+                  <div className="h-80 relative overflow-hidden rounded-lg bg-gradient-to-br from-space-700/30 to-space-800/30">
+                    <MiniChart 
+                      data={chartData} 
+                      width={800} 
+                      height={320}
+                      className="absolute inset-0"
+                    />
+                    <div className="absolute top-4 left-4 bg-black/20 backdrop-blur-sm rounded-lg p-3">
+                      <div className="text-sm text-muted-foreground">24h Range</div>
+                      <div className="flex items-center space-x-4 mt-1">
+                        <span className="text-sm">
+                          L: ${selectedAsset?.low24h?.toLocaleString() || 'N/A'}
+                        </span>
+                        <span className="text-sm">
+                          H: ${selectedAsset?.high24h?.toLocaleString() || 'N/A'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="h-80 bg-gradient-to-br from-space-700/50 to-space-800/50 rounded-lg flex items-center justify-center relative overflow-hidden">
+                    <div className="absolute inset-0 bg-gradient-to-r from-neon-purple/10 via-transparent to-neon-blue/10" />
+                    <div className="text-center z-10">
+                      <Activity className="w-16 h-16 text-neon-purple/50 mx-auto mb-4" />
+                      <h3 className="text-xl font-semibold gradient-text mb-2">Chart Loading</h3>
+                      <p className="text-muted-foreground">Interactive price chart will appear here</p>
+                      <Button 
+                        variant="outline" 
+                        className="mt-4 btn-glass"
+                        onClick={refreshData}
+                      >
+                        <RefreshCw className="w-4 h-4 mr-2" />
+                        Retry
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </CardContent>
             </Card>
 
@@ -130,13 +244,17 @@ const TradingDashboard = () => {
                   <div className="space-y-3">
                     <div>
                       <label className="text-sm font-medium text-muted-foreground mb-1 block">
-                        Size
+                        Size ({selectedSymbol.split('/')[0]})
                       </label>
                       <div className="glass rounded-lg p-3">
                         <div className={`text-lg font-semibold ${isPrivateMode ? 'privacy-blur' : ''}`}>
-                          0.25 BTC
+                          {selectedSymbol.includes('BTC') ? '0.25 BTC' : 
+                           selectedSymbol.includes('ETH') ? '5.0 ETH' :
+                           selectedSymbol.includes('SOL') ? '100 SOL' : '1000 HBAR'}
                         </div>
-                        <div className="text-sm text-muted-foreground">≈ $10,812.50</div>
+                        <div className="text-sm text-muted-foreground">
+                          ≈ ${selectedAsset ? (selectedAsset.price * 0.25).toLocaleString() : '10,812.50'}
+                        </div>
                       </div>
                     </div>
                     

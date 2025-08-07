@@ -3,6 +3,15 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
+  "description": "Privacy-focused trading platform with zero-knowledge technology on Hedera",
+  "homepage": "https://ellalle.vercel.app",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/johnnyduo/stealthflow-aiview.git"
+  },
+  "keywords": ["hedera", "trading", "defi", "privacy", "zero-knowledge", "web3"],
+  "author": "ELLALLE Team",
+  "license": "MIT",
   "scripts": {
     "dev": "vite --host 0.0.0.0 --port 8080",
     "build": "vite build",

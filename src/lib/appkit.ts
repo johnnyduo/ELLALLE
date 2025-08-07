@@ -1,48 +1,34 @@
-// Reown AppKit configuration for ELLALLE platform with Hedera Testnet
+// Simple AppKit configuration for ELLALLE platform
+// Using environment variables for all configuration
 
 import { createAppKit } from '@reown/appkit';
+import { mainnet } from '@reown/appkit/networks';
 
 // Get environment variables
 const projectId = import.meta.env.VITE_REOWN_PROJECT_ID || 'd645a4537e923bd397788df964e8e866';
+const appName = import.meta.env.VITE_APP_NAME || 'ELLALLE';
+const appUrl = import.meta.env.VITE_APP_URL || (typeof window !== 'undefined' ? window.location.origin : 'https://ellalle.vercel.app');
 
-// Hedera network configurations
-const hederaTestnet = {
-  chainId: 296,
-  name: 'Hedera Testnet',
-  currency: 'HBAR',
-  explorerUrl: 'https://hashscan.io/testnet',
-  rpcUrl: 'https://testnet.hashio.io/api',
-  chainNamespace: 'eip155',
-};
-
-const hederaMainnet = {
-  chainId: 295,
-  name: 'Hedera Mainnet', 
-  currency: 'HBAR',
-  explorerUrl: 'https://hashscan.io/mainnet',
-  rpcUrl: 'https://mainnet.hashio.io/api',
-  chainNamespace: 'eip155',
-};
-
-// Configure networks
-const networks = [hederaTestnet];
+// For now, use Ethereum mainnet as base network
+// Hedera integration will be handled by our custom wallet hook
+const networks = [mainnet];
 
 // Metadata for the app
 const metadata = {
-  name: 'ELLALLE',
+  name: appName,
   description: 'Privacy-focused trading platform with zero-knowledge technology',
-  url: typeof window !== 'undefined' ? window.location.origin : 'https://ellalle.com',
+  url: appUrl,
   icons: ['/favicon.ico'],
 };
 
-// Create and configure AppKit
+// Create and configure AppKit with minimal setup
 export const appKit = createAppKit({
   projectId,
   networks,
-  defaultNetwork: hederaTestnet,
+  defaultNetwork: mainnet,
   metadata,
   features: {
-    analytics: true,
+    analytics: import.meta.env.VITE_ENABLE_ANALYTICS === 'true',
     email: false,
     socials: [],
   },
@@ -55,7 +41,7 @@ export const appKit = createAppKit({
   },
 });
 
-// Wallet connection utilities
+// Wallet connection utilities using environment variables
 export const connectWallet = async () => {
   try {
     await appKit.open();
@@ -84,24 +70,11 @@ export const getChainId = () => {
   return appKit.getChainId();
 };
 
-export const switchToHederaTestnet = async () => {
-  try {
-    await appKit.switchNetwork(hederaTestnet);
-    return true;
-  } catch (error) {
-    console.error('Error switching to Hedera Testnet:', error);
-    return false;
-  }
-};
-
-export const switchToHederaMainnet = async () => {
-  try {
-    await appKit.switchNetwork(hederaMainnet);
-    return true;
-  } catch (error) {
-    console.error('Error switching to Hedera Mainnet:', error);
-    return false;
-  }
+// Helper functions for Hedera network (handled by custom hook)
+export const isConnectedToHedera = () => {
+  const chainId = getChainId();
+  const hederaChainId = Number(import.meta.env.VITE_CHAIN_ID) || 296;
+  return chainId === hederaChainId || chainId === 295; // Testnet or Mainnet
 };
 
 // Subscribe to account changes
@@ -114,10 +87,16 @@ export const subscribeToNetwork = (callback: (network: any) => void) => {
   return appKit.subscribeNetwork(callback);
 };
 
-// Helper to check if connected to Hedera
-export const isConnectedToHedera = () => {
-  const chainId = getChainId();
-  return chainId === 296 || chainId === 295; // Hedera Testnet or Mainnet
+// Export configuration values for use elsewhere
+export const config = {
+  projectId,
+  appName,
+  appUrl,
+  chainId: Number(import.meta.env.VITE_CHAIN_ID) || 296,
+  rpcUrl: import.meta.env.VITE_RPC_URL || 'https://testnet.hashio.io/api',
+  explorerUrl: import.meta.env.VITE_BLOCK_EXPLORER_URL || 'https://hashscan.io/testnet',
+  networkName: import.meta.env.VITE_NETWORK_NAME || 'Hedera Testnet',
+  currencySymbol: import.meta.env.VITE_CURRENCY_SYMBOL || 'HBAR',
 };
 
 // Export AppKit instance for direct access if needed
