@@ -150,15 +150,17 @@
   }
 
   .text-profit {
-    @apply text-profit font-semibold;
+    color: hsl(var(--profit));
+    @apply font-semibold;
   }
 
   .text-loss {
-    @apply text-loss font-semibold;
+    color: hsl(var(--loss));
+    @apply font-semibold;
   }
 
   .text-neutral {
-    @apply text-neutral;
+    color: hsl(var(--neutral));
   }
 
   /* Animation Utilities */
