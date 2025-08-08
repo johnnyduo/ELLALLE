@@ -10,6 +10,8 @@ import { Separator } from '@/components/ui/separator';
 import { TradeHistoryItem } from '@/services/ProductionZKPService';
 import {
     CheckCircle,
+    ChevronLeft,
+    ChevronRight,
     Clock,
     ExternalLink,
     Hash,
@@ -17,21 +19,79 @@ import {
     Target,
     TrendingDown,
     TrendingUp,
+    X,
     Zap
 } from 'lucide-react';
-import React from 'react';
+import React, { useMemo, useState } from 'react';
+import { toast } from 'sonner';
 
 interface ZKPTradesHistoryProps {
   trades: TradeHistoryItem[];
   loading: boolean;
   onRefresh: () => void;
+  onClosePosition?: (tradeId: string) => Promise<{ success: boolean; message: string; txHash?: string }>;
 }
 
 export const ZKPTradesHistory: React.FC<ZKPTradesHistoryProps> = ({
   trades,
   loading,
-  onRefresh
+  onRefresh,
+  onClosePosition
 }) => {
+  const [closingPositions, setClosingPositions] = useState<Set<string>>(new Set());
+  const [currentPage, setCurrentPage] = useState(1);
+  const tradesPerPage = 5;
+
+  // Pagination logic
+  const { paginatedTrades, totalPages, hasNextPage, hasPrevPage } = useMemo(() => {
+    const sortedTrades = [...trades].sort((a, b) => b.timestamp - a.timestamp);
+    const startIndex = (currentPage - 1) * tradesPerPage;
+    const endIndex = startIndex + tradesPerPage;
+    const paginatedTrades = sortedTrades.slice(startIndex, endIndex);
+    const totalPages = Math.ceil(trades.length / tradesPerPage);
+    
+    return {
+      paginatedTrades,
+      totalPages,
+      hasNextPage: currentPage < totalPages,
+      hasPrevPage: currentPage > 1
+    };
+  }, [trades, currentPage, tradesPerPage]);
+
+  const handlePageChange = (direction: 'next' | 'prev') => {
+    if (direction === 'next' && hasNextPage) {
+      setCurrentPage(prev => prev + 1);
+    } else if (direction === 'prev' && hasPrevPage) {
+      setCurrentPage(prev => prev - 1);
+    }
+  };
+
+  const handleClosePosition = async (tradeId: string) => {
+    if (!onClosePosition) return;
+    
+    setClosingPositions(prev => new Set(prev).add(tradeId));
+    toast.info('🔄 Closing position...');
+    
+    try {
+      const result = await onClosePosition(tradeId);
+      
+      if (result.success) {
+        toast.success('✅ Position closed successfully!');
+        onRefresh(); // Refresh the trades list
+      } else {
+        toast.error(`❌ ${result.message}`);
+      }
+    } catch (error) {
+      toast.error('❌ Failed to close position');
+      console.error('Error closing position:', error);
+    } finally {
+      setClosingPositions(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(tradeId);
+        return newSet;
+      });
+    }
+  };
   const formatTimestamp = (timestamp: number) => {
     return new Date(timestamp).toLocaleString();
   };
@@ -88,9 +148,12 @@ export const ZKPTradesHistory: React.FC<ZKPTradesHistoryProps> = ({
             <p className="text-sm">Execute your first ZKP trade to see it here</p>
           </div>
         ) : (
-          trades.map((trade) => (
-            <Card key={trade.id} className="bg-black/60 border-neon-purple/20">
-              <CardContent className="p-4">
+          <>
+            {/* Trade List */}
+            <div className="space-y-4">
+              {paginatedTrades.map((trade) => (
+                <Card key={trade.id} className="bg-black/60 border-neon-purple/20">
+                  <CardContent className="p-4">
                 {/* Trade Header */}
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center space-x-3">
@@ -109,10 +172,35 @@ export const ZKPTradesHistory: React.FC<ZKPTradesHistoryProps> = ({
                       <CheckCircle className="h-3 w-3 mr-1" />
                       {trade.status}
                     </Badge>
+                    {trade.isActive && (
+                      <Badge className="bg-blue-500/20 text-blue-300">
+                        Active Position
+                      </Badge>
+                    )}
                   </div>
-                  <div className="text-xs text-gray-400 flex items-center space-x-1">
-                    <Clock className="h-3 w-3" />
-                    <span>{formatTimestamp(trade.timestamp)}</span>
+                  <div className="flex items-center space-x-2">
+                    <div className="text-xs text-gray-400 flex items-center space-x-1">
+                      <Clock className="h-3 w-3" />
+                      <span>{formatTimestamp(trade.timestamp)}</span>
+                    </div>
+                    {trade.isActive && onClosePosition && (
+                      <Button
+                        onClick={() => handleClosePosition(trade.id)}
+                        disabled={closingPositions.has(trade.id)}
+                        size="sm"
+                        variant="outline"
+                        className="text-red-400 border-red-400 hover:bg-red-400/10 text-xs px-2 py-1 h-6"
+                      >
+                        {closingPositions.has(trade.id) ? (
+                          <div className="h-3 w-3 animate-spin rounded-full border border-current border-t-transparent" />
+                        ) : (
+                          <>
+                            <X className="h-3 w-3 mr-1" />
+                            Close
+                          </>
+                        )}
+                      </Button>
+                    )}
                   </div>
                 </div>
 
@@ -219,7 +307,40 @@ export const ZKPTradesHistory: React.FC<ZKPTradesHistoryProps> = ({
                 )}
               </CardContent>
             </Card>
-          ))
+          ))}
+          </div>
+
+          {/* Pagination Controls */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between pt-4 border-t border-neon-purple/20">
+              <div className="text-sm text-gray-400">
+                Page {currentPage} of {totalPages} ({trades.length} total trades)
+              </div>
+              <div className="flex items-center space-x-2">
+                <Button
+                  onClick={() => handlePageChange('prev')}
+                  disabled={!hasPrevPage}
+                  size="sm"
+                  variant="outline"
+                  className="border-neon-purple/50 text-neon-purple hover:bg-neon-purple/10 disabled:opacity-50"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                  Previous
+                </Button>
+                <Button
+                  onClick={() => handlePageChange('next')}
+                  disabled={!hasNextPage}
+                  size="sm"
+                  variant="outline"
+                  className="border-neon-purple/50 text-neon-purple hover:bg-neon-purple/10 disabled:opacity-50"
+                >
+                  Next
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          )}
+          </>
         )}
       </CardContent>
     </Card>

@@ -99,16 +99,36 @@ export interface TradeHistoryItem {
   };
   onChainData?: OnChainTradeData;
   status: 'completed' | 'pending' | 'failed';
+  // New fields for position management
+  pairId: number;
+  isActive: boolean;
+  entryPrice?: number;
+  currentPrice?: number;
+  pnl?: number;
+  tradeParams: TradeParams; // Store original trade params for close position
 }
 
 export class ProductionZKPService {
   private provider: BrowserProvider | null = null;
   private contract: Contract | null = null;
   private completedTrades: TradeHistoryItem[] = [];
+  private tradeIdCounter: number = 0; // Add counter for unique IDs
 
   constructor() {
     this.initializeProvider();
     this.loadStoredTrades();
+    // Initialize counter based on existing trades
+    this.tradeIdCounter = this.completedTrades.length;
+  }
+
+  /**
+   * Generate unique trade ID
+   */
+  private generateUniqueTradeId(prefix: string = 'zkp-trade'): string {
+    const timestamp = Date.now();
+    const counter = ++this.tradeIdCounter;
+    const random = Math.floor(Math.random() * 1000);
+    return `${prefix}-${timestamp}-${counter}-${random}`;
   }
 
   /**
@@ -118,7 +138,15 @@ export class ProductionZKPService {
     try {
       const stored = localStorage.getItem('zkp-completed-trades');
       if (stored) {
-        this.completedTrades = JSON.parse(stored);
+        const parsedTrades = JSON.parse(stored);
+        // Remove duplicates immediately upon loading
+        this.completedTrades = this.removeDuplicateTrades(parsedTrades);
+        
+        // If duplicates were found, save the cleaned version back
+        if (this.completedTrades.length !== parsedTrades.length) {
+          console.log('🧹 Cleaned up duplicate trades from localStorage');
+          localStorage.setItem('zkp-completed-trades', JSON.stringify(this.completedTrades));
+        }
       }
     } catch (error) {
       console.error('❌ Error loading stored trades:', error);
@@ -131,7 +159,18 @@ export class ProductionZKPService {
    */
   private saveCompletedTrade(trade: TradeHistoryItem): void {
     try {
-      this.completedTrades.unshift(trade); // Add to beginning
+      // Check for duplicates before adding
+      const existingIndex = this.completedTrades.findIndex(t => t.id === trade.id);
+      if (existingIndex >= 0) {
+        // Update existing trade instead of adding duplicate
+        this.completedTrades[existingIndex] = trade;
+        console.log('🔄 Updated existing trade:', trade.id);
+      } else {
+        // Add new trade to beginning
+        this.completedTrades.unshift(trade);
+        console.log('✅ Added new trade:', trade.id);
+      }
+      
       // Keep only last 10 trades
       this.completedTrades = this.completedTrades.slice(0, 10);
       localStorage.setItem('zkp-completed-trades', JSON.stringify(this.completedTrades));
@@ -167,16 +206,125 @@ export class ProductionZKPService {
   }
 
   /**
-   * Force refresh balances (clear any caching)
+   * Force refresh balances after trade completion
    */
-  async forceRefreshBalances(): Promise<{
-    hbar: string;
-    usdc: string;
-    native: string;
-    address: string;
-  }> {
-    console.log('🔄 Force refreshing balances...');
-    return await this.checkBalances(true);
+  private async forceRefreshBalances(): Promise<void> {
+    // This method will trigger a balance refresh in the hook
+    // Implementation will depend on how the balance hook is structured
+    console.log('🔄 Triggering balance refresh...');
+    
+    // Add a small delay to allow blockchain to update
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    
+    // Emit custom event for balance refresh
+    window.dispatchEvent(new CustomEvent('zkp-balance-refresh'));
+  }
+
+  /**
+   * Close an active ZKP position and return collateral to DarkPool balance
+   */
+  async closePosition(tradeId: string): Promise<{ success: boolean; message: string; txHash?: string }> {
+    try {
+      console.log(`🔴 Closing position: ${tradeId}`);
+      
+      // Find the trade to close
+      const trade = this.completedTrades.find(t => t.id === tradeId && t.isActive);
+      if (!trade) {
+        return { success: false, message: 'Trade not found or already closed' };
+      }
+
+      console.log('📊 Original trade details:', {
+        asset: trade.asset,
+        collateral: trade.collateral,
+        direction: trade.direction,
+        leverage: trade.leverage
+      });
+
+      // Create reverse trade parameters (same commitment hash to close the position)
+      const closeParams: TradeParams = {
+        ...trade.tradeParams,
+        isLong: !trade.tradeParams.isLong, // Reverse the direction
+        size: trade.tradeParams.size, // Same size
+        leverage: trade.tradeParams.leverage, // Same leverage
+      };
+
+      console.log('🔄 Executing reverse trade to close position:', closeParams);
+
+      // Execute the reverse trade to close position
+      const result = await this.executeCompleteZKPTrade(closeParams);
+
+      if (result.success) {
+        // Calculate collateral to return to DarkPool balance
+        const originalCollateralAmount = parseFloat(trade.collateral.replace(/[^\d.-]/g, ''));
+        console.log(`💰 Returning ${originalCollateralAmount} USDC collateral to DarkPool balance`);
+
+        // Mark original trade as closed (keep same commitment hash)
+        trade.isActive = false;
+        trade.status = 'completed';
+        
+        // Save updated trade without changing the commitment
+        this.saveCompletedTrade(trade);
+
+        // Create close trade record (this will move to history)
+        const pairInfo = TRADING_PAIRS[closeParams.pairId] || TRADING_PAIRS[1];
+        const displaySymbol = closeParams.selectedSymbol || pairInfo.symbol;
+
+        const closeTrade: TradeHistoryItem = {
+          id: this.generateUniqueTradeId('zkp-close'),
+          timestamp: Date.now(),
+          asset: displaySymbol,
+          size: `${closeParams.size} ${pairInfo.baseAsset}`,
+          direction: closeParams.isLong ? 'Long' : 'Short',
+          leverage: `${closeParams.leverage}x`,
+          collateral: trade.collateral, // Keep original collateral amount
+          commitment: trade.commitment, // Keep original commitment hash, NOT "CLOSE-POSITION"
+          txHashes: {
+            commitment: result.commitmentTx || trade.txHashes.commitment,
+            trade: result.tradeTx || ''
+          },
+          status: 'completed',
+          pairId: closeParams.pairId,
+          isActive: false, // Close trades are not active positions
+          entryPrice: trade.entryPrice,
+          currentPrice: closeParams.currentPrice,
+          pnl: 0, // Calculate PnL based on price difference
+          tradeParams: closeParams
+        };
+
+        // Save close trade to history (this won't be an active position)
+        this.saveCompletedTrade(closeTrade);
+
+        // Trigger DarkPool balance refresh to reflect returned collateral
+        console.log('🔄 Triggering DarkPool balance refresh...');
+        window.dispatchEvent(new CustomEvent('darkpool-balance-refresh', {
+          detail: { 
+            returnedCollateral: originalCollateralAmount,
+            currency: 'USDC',
+            reason: 'Position Closed'
+          }
+        }));
+
+        // Force refresh ZKP balances
+        await this.forceRefreshBalances();
+
+        return { 
+          success: true, 
+          message: `Position closed successfully. ${originalCollateralAmount} USDC returned to DarkPool balance.`, 
+          txHash: result.tradeTx 
+        };
+      } else {
+        return { 
+          success: false, 
+          message: result.error || 'Failed to close position' 
+        };
+      }
+    } catch (error) {
+      console.error('❌ Error closing position:', error);
+      return { 
+        success: false, 
+        message: `Error closing position: ${error instanceof Error ? error.message : 'Unknown error'}` 
+      };
+    }
   }
 
   /**
@@ -395,11 +543,16 @@ export class ProductionZKPService {
       const collateral = await this.calculateCollateral(commitmentData.requiredCollateral, params.useHBAR);
       console.log('💸 Expected collateral deduction:', collateral);
 
+      // Convert collateral to contract units (micro-units: 1 USDC = 1,000,000 micro-USDC)
+      const collateralInMicroUnits = Math.floor(commitmentData.requiredCollateral * 1000000);
+      console.log('🔢 Collateral in contract units:', collateralInMicroUnits, 'micro-USDC');
+      console.log('🔢 WorkingSize for proof:', commitmentData.workingSize);
+
       const tx = await this.contract!.executeTrade(
         proof.proof,
         proof.publicInputs,
         commitmentData.commitment,
-        commitmentData.workingSize,
+        collateralInMicroUnits, // Use actual collateral amount instead of workingSize
         params.isLong,
         params.useHBAR,
         { gasLimit: 500000 }
@@ -485,7 +638,7 @@ export class ProductionZKPService {
 
       // Create trade history item for the completed trade
       const completedTrade: TradeHistoryItem = {
-        id: `zkp-trade-${Date.now()}`,
+        id: this.generateUniqueTradeId('zkp-trade'),
         timestamp: Date.now(),
         asset: displaySymbol,
         size: `${params.size} ${pairInfo.baseAsset}`,
@@ -497,7 +650,14 @@ export class ProductionZKPService {
           commitment: commitmentTx,
           trade: tradeTx
         },
-        status: 'completed'
+        status: 'completed',
+        // New required fields
+        pairId: params.pairId,
+        isActive: true,
+        entryPrice: params.currentPrice,
+        currentPrice: params.currentPrice,
+        pnl: 0,
+        tradeParams: params
       };
 
       // Save the completed trade
@@ -526,12 +686,27 @@ export class ProductionZKPService {
   }
 
   /**
+   * Remove duplicate trades from trade list
+   */
+  private removeDuplicateTrades(trades: TradeHistoryItem[]): TradeHistoryItem[] {
+    const seenIds = new Set<string>();
+    return trades.filter(trade => {
+      if (seenIds.has(trade.id)) {
+        console.log('🗑️ Removing duplicate trade ID:', trade.id);
+        return false;
+      }
+      seenIds.add(trade.id);
+      return true;
+    });
+  }
+
+  /**
    * Fetch trade history from local storage and on-chain data
    */
   async getTradeHistory(): Promise<TradeHistoryItem[]> {
     try {
       // Start with stored completed trades
-      const allTrades: TradeHistoryItem[] = [...this.completedTrades];
+      let allTrades: TradeHistoryItem[] = [...this.completedTrades];
 
       // Add the original successful trade if not already present
       const originalTradeExists = allTrades.some(trade => 
@@ -552,7 +727,22 @@ export class ProductionZKPService {
             commitment: '0x06bc1da17d4ab24a04e5223f25c1f724afabb1b8dad697ab25106d3b31e12045',
             trade: '0xd34ad1efafc97d3d6ed96803f16e1bd979c67efb4e9448635ce6f6a3a9f327ca'
           },
-          status: 'completed'
+          status: 'completed',
+          // New required fields for legacy trade
+          pairId: 1, // BTC/USDC
+          isActive: false, // Legacy trade, not closeable
+          entryPrice: 101667,
+          currentPrice: 101667,
+          pnl: 0,
+          tradeParams: {
+            size: 0.01,
+            isLong: true,
+            leverage: 10,
+            pairId: 1,
+            useHBAR: false,
+            selectedSymbol: 'BTC/USDC',
+            currentPrice: 101667
+          }
         };
 
         // Fetch on-chain data for the original trade
@@ -574,7 +764,8 @@ export class ProductionZKPService {
         }
       }
 
-      // Sort by timestamp (newest first)
+      // Remove duplicates and sort by timestamp (newest first)
+      allTrades = this.removeDuplicateTrades(allTrades);
       return allTrades.sort((a, b) => b.timestamp - a.timestamp);
     } catch (error) {
       console.error('❌ Error fetching trade history:', error);

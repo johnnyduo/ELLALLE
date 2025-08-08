@@ -838,6 +838,30 @@ export const useDarkPool = (): UseDarkPoolReturn => {
     }
   }, [checkBalance]);
 
+  // Listen for balance refresh events (e.g., when ZKP positions are closed)
+  useEffect(() => {
+    const handleBalanceRefresh = (event: CustomEvent) => {
+      console.log('🔄 DarkPool balance refresh event received:', event.detail);
+      
+      if (state.isConnected && typeof window !== 'undefined' && window.ethereum) {
+        window.ethereum.request({ method: 'eth_accounts' })
+          .then((accounts: string[]) => {
+            if (accounts && accounts.length > 0) {
+              checkBalance(accounts[0]);
+              checkUSDCBalance(accounts[0]);
+            }
+          })
+          .catch(console.error);
+      }
+    };
+
+    window.addEventListener('darkpool-balance-refresh', handleBalanceRefresh as EventListener);
+    
+    return () => {
+      window.removeEventListener('darkpool-balance-refresh', handleBalanceRefresh as EventListener);
+    };
+  }, [state.isConnected, checkBalance, checkUSDCBalance]);
+
   // Auto-connect on mount if provider is available
   useEffect(() => {
     if (typeof window !== 'undefined' && window.ethereum) {

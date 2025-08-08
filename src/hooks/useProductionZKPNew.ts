@@ -31,12 +31,6 @@ export const useProductionZKP = () => {
     tradeHistory: []
   });
 
-  // Load balances on mount
-  useEffect(() => {
-    loadBalances();
-    loadTradeHistory();
-  }, []);
-
   const loadTradeHistory = useCallback(async () => {
     try {
       const history = await zkpService.getTradeHistory();
@@ -99,7 +93,7 @@ export const useProductionZKP = () => {
         setTimeout(async () => {
           try {
             console.log('🔄 Force refreshing balances after trade...');
-            const freshBalances = await zkpService.forceRefreshBalances();
+            const freshBalances = await zkpService.checkBalances(true);
             setState(prev => ({ 
               ...prev, 
               balances: freshBalances 
@@ -147,6 +141,39 @@ export const useProductionZKP = () => {
     }
   }, [loadBalances]);
 
+  const closePosition = useCallback(async (tradeId: string): Promise<{ success: boolean; message: string; txHash?: string }> => {
+    try {
+      setState(prev => ({ ...prev, loading: true, error: null }));
+      
+      const result = await zkpService.closePosition(tradeId);
+      
+      if (result.success) {
+        // Refresh trade history and balances
+        await Promise.all([
+          loadTradeHistory(),
+          loadBalances(true)
+        ]);
+      }
+      
+      return result;
+    } catch (error) {
+      console.error('❌ Error closing position:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      setState(prev => ({ 
+        ...prev, 
+        error: `Close position failed: ${errorMessage}`,
+        loading: false 
+      }));
+      
+      return {
+        success: false,
+        message: errorMessage
+      };
+    } finally {
+      setState(prev => ({ ...prev, loading: false }));
+    }
+  }, [loadTradeHistory, loadBalances]);
+
   const clearError = useCallback(() => {
     setState(prev => ({ ...prev, error: null }));
   }, []);
@@ -159,6 +186,25 @@ export const useProductionZKP = () => {
     return loadBalances(true);
   }, [loadBalances]);
 
+  // Load balances on mount and listen for refresh events
+  useEffect(() => {
+    loadBalances();
+    loadTradeHistory();
+
+    // Listen for balance refresh events
+    const handleBalanceRefresh = () => {
+      console.log('🔄 Balance refresh event received');
+      loadBalances(true);
+      loadTradeHistory();
+    };
+
+    window.addEventListener('zkp-balance-refresh', handleBalanceRefresh);
+
+    return () => {
+      window.removeEventListener('zkp-balance-refresh', handleBalanceRefresh);
+    };
+  }, [loadBalances, loadTradeHistory]);
+
   return {
     // State
     balances: state.balances,
@@ -169,6 +215,7 @@ export const useProductionZKP = () => {
     
     // Actions
     executeTrade,
+    closePosition,
     refreshBalances,
     forceRefreshBalances,
     loadTradeHistory,

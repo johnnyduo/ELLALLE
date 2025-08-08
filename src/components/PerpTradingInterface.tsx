@@ -1,10 +1,11 @@
+import { ActivePositions } from '@/components/ActivePositions';
+import { TradingHistory } from '@/components/TradingHistory';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ZKPTradesHistory } from '@/components/ZKPTradesHistory';
 import { useProductionZKP } from '@/hooks/useProductionZKPNew';
 import { usePythOracle } from '@/hooks/zkp/usePythOracle';
 import { CONTRACT_CONFIG } from '@/lib/env';
@@ -20,7 +21,8 @@ import {
   Shield,
   Target,
   TrendingDown,
-  TrendingUp
+  TrendingUp,
+  Users
 } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 import { toast } from 'sonner';
@@ -92,6 +94,7 @@ export const PerpTradingInterface: React.FC<PerpTradingInterfaceProps> = ({
     currentTrade,
     tradeHistory,
     executeTrade: executeZKPTrade,
+    closePosition,
     loadTradeHistory,
     clearError,
     refreshBalances,
@@ -103,7 +106,7 @@ export const PerpTradingInterface: React.FC<PerpTradingInterfaceProps> = ({
   // Pyth Oracle integration for real-time prices
   const { prices } = usePythOracle();
 
-    // Mock positions for demo
+  // Mock positions for demo
   useEffect(() => {
     setPositions([
       {
@@ -115,25 +118,36 @@ export const PerpTradingInterface: React.FC<PerpTradingInterfaceProps> = ({
         markPrice: currentPrice,
         pnl: (currentPrice - 42150) * 0.5,
         pnlPercent: ((currentPrice - 42150) / 42150) * 100,
-        margin: 2125,
+        margin: 2000,
         leverage: 10,
-        liquidationPrice: 3794,
-      },
-      {
-        id: '2',
-        symbol: 'ETH-USD',
-        side: 'short',
-        size: 2.0,
-        entryPrice: 2650,
-        markPrice: 2600,
-        pnl: (2650 - 2600) * 2.0,
-        pnlPercent: ((2650 - 2600) / 2650) * 100,
-        margin: 520,
-        leverage: 8,
-        liquidationPrice: 2860,
+        liquidationPrice: 37935
       }
     ]);
-  }, [currentPrice]);
+
+    // Mock orders for demo (public orders)
+    setOrders([
+      {
+        id: 'order-1',
+        symbol: selectedSymbol,
+        side: 'buy',
+        type: 'limit',
+        size: 0.1,
+        price: currentPrice * 0.95,
+        status: 'filled',
+        timestamp: Date.now() - 3600000 // 1 hour ago
+      },
+      {
+        id: 'order-2', 
+        symbol: selectedSymbol,
+        side: 'sell',
+        type: 'market',
+        size: 0.05,
+        price: currentPrice,
+        status: 'completed',
+        timestamp: Date.now() - 1800000 // 30 minutes ago
+      }
+    ]);
+  }, [currentPrice, selectedSymbol]);
 
   // Calculate ZKP collateral when order size, leverage, or balances change
   useEffect(() => {
@@ -278,7 +292,7 @@ export const PerpTradingInterface: React.FC<PerpTradingInterfaceProps> = ({
           setOrderPrice('');
           
           // Automatically switch to ZKP Trades tab to show the new trade
-          setActiveTab('zkp-trades');
+          setActiveTab('zkp');
           
           toast.success('🎉 ZKP trade executed successfully!');
           
@@ -961,12 +975,20 @@ export const PerpTradingInterface: React.FC<PerpTradingInterfaceProps> = ({
             <TabsContent value="positions" className="mt-4">
               <Card className="card-glass">
                 <CardHeader>
-                  <CardTitle className="text-lg">Open Positions</CardTitle>
+                  <CardTitle className="text-lg flex items-center space-x-2">
+                    <span>Open Positions</span>
+                    <Badge className="bg-blue-500/20 text-blue-300 border-blue-500/30">
+                      <Users className="h-3 w-3 mr-1" />
+                      Public
+                    </Badge>
+                  </CardTitle>
                 </CardHeader>
                 <CardContent>
                   {positions.length === 0 ? (
                     <div className="text-center py-8 text-muted-foreground">
-                      No open positions
+                      <Users className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                      <p>No open positions</p>
+                      <p className="text-sm">Execute a regular trade to create positions</p>
                     </div>
                   ) : (
                     <div className="space-y-4">
@@ -983,6 +1005,10 @@ export const PerpTradingInterface: React.FC<PerpTradingInterfaceProps> = ({
                                 {position.side.toUpperCase()}
                               </Badge>
                               <span className="font-medium text-sm">{position.symbol}</span>
+                              <Badge className="bg-blue-500/20 text-blue-300 border-blue-500/30">
+                                <Users className="h-3 w-3 mr-1" />
+                                Public
+                              </Badge>
                               {isPrivateMode && <Shield className="w-4 h-4 text-purple-400" />}
                             </div>
                             <div className={`text-sm font-medium text-right ${position.pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
@@ -1035,78 +1061,42 @@ export const PerpTradingInterface: React.FC<PerpTradingInterfaceProps> = ({
             <TabsContent value="orders" className="mt-4">
               <Card className="card-glass">
                 <CardHeader>
-                  <CardTitle className="text-lg">Open Orders</CardTitle>
+                  <CardTitle className="text-lg flex items-center space-x-2">
+                    <span>Open Orders</span>
+                    <Badge className="bg-blue-500/20 text-blue-300 border-blue-500/30">
+                      <Users className="h-3 w-3 mr-1" />
+                      Public
+                    </Badge>
+                  </CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="text-center py-8 text-muted-foreground">
-                    No open orders
+                    <Users className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                    <p>No open orders</p>
+                    <p className="text-sm">Place your first order to see it here</p>
                   </div>
                 </CardContent>
               </Card>
             </TabsContent>
 
-            <TabsContent value="zkp" className="mt-4">
-              <ZKPTradesHistory 
+                        <TabsContent value="zkp" className="mt-4">
+              <ActivePositions 
                 trades={tradeHistory}
                 loading={zkpLoading}
                 onRefresh={loadTradeHistory}
+                onClosePosition={closePosition}
+                isPrivateMode={isPrivateMode}
               />
             </TabsContent>
 
             <TabsContent value="history" className="mt-4">
-              <Card className="card-glass">
-                <CardHeader>
-                  <CardTitle className="text-lg">Order History</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {orders.length === 0 ? (
-                    <div className="text-center py-8 text-muted-foreground">
-                      No order history
-                    </div>
-                  ) : (
-                    <div className="space-y-3">
-                      {orders.map((order) => (
-                        <div
-                          key={order.id}
-                          className={`p-3 rounded-lg border ${
-                            isPrivateMode ? 'bg-purple-500/5 border-purple-500/20' : 'bg-gray-500/5 border-gray-500/20'
-                          }`}
-                        >
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center space-x-2">
-                              <Badge variant={order.side === 'buy' ? 'default' : 'destructive'}>
-                                {order.side.toUpperCase()}
-                              </Badge>
-                              <span className="font-medium">{order.symbol}</span>
-                              <span className="text-sm text-muted-foreground">{order.type.toUpperCase()}</span>
-                              {isPrivateMode && <Shield className="w-3 h-3 text-purple-400" />}
-                            </div>
-                            <Badge variant="outline" className="bg-green-500/20 text-green-300 border-green-500/50">
-                              <CheckCircle className="w-3 h-3 mr-1" />
-                              {order.status.toUpperCase()}
-                            </Badge>
-                          </div>
-                          
-                          <div className="mt-2 grid grid-cols-3 gap-4 text-sm">
-                            <div>
-                              <div className="text-muted-foreground">Size</div>
-                              <div>{order.size} {order.symbol.split('/')[0]}</div>
-                            </div>
-                            <div>
-                              <div className="text-muted-foreground">Price</div>
-                              <div>{order.price ? formatPrice(order.price) : 'Market'}</div>
-                            </div>
-                            <div>
-                              <div className="text-muted-foreground">Time</div>
-                              <div>{new Date(order.timestamp).toLocaleTimeString()}</div>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
+              <TradingHistory 
+                trades={tradeHistory}
+                orders={orders}
+                loading={zkpLoading}
+                onRefresh={loadTradeHistory}
+                isPrivateMode={isPrivateMode}
+              />
             </TabsContent>
           </Tabs>
         </div>
