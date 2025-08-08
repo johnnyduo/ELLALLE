@@ -272,6 +272,7 @@ export const useDarkPool = (): UseDarkPoolReturn => {
       setTimeout(async () => {
         try {
           await checkBalance(accounts[0]);
+          await checkUSDCBalance(accounts[0]); // Also refresh USDC balance for completeness
         } catch (error) {
           console.error('Error refreshing balance after deposit:', error);
         }
@@ -395,6 +396,7 @@ export const useDarkPool = (): UseDarkPoolReturn => {
       setTimeout(async () => {
         try {
           await checkBalance(accounts[0]);
+          await checkUSDCBalance(accounts[0]); // Also refresh USDC balance for completeness
         } catch (error) {
           console.error('Error refreshing balance after withdrawal:', error);
         }
@@ -817,8 +819,11 @@ export const useDarkPool = (): UseDarkPoolReturn => {
       console.log('✅ USDC withdrawal transaction sent:', txHash);
       setState(prev => ({ ...prev, loading: false }));
       
-      // Refresh balance after a delay
-      setTimeout(() => checkBalance(accounts[0]), 5000);
+      // Refresh both HBAR and USDC balance after a delay
+      setTimeout(() => {
+        checkBalance(accounts[0]);
+        checkUSDCBalance(accounts[0]);
+      }, 5000);
       
       return txHash;
 
