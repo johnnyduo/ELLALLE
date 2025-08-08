@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useDarkPool } from '@/hooks/useDarkPool';
 import { useMarketData } from '@/hooks/useMarketData';
+import { useProductionZKP } from '@/hooks/useProductionZKPNew';
 import { useUSDCFaucet } from '@/hooks/useUSDCFaucet';
 import { useWallet } from '@/hooks/useWallet';
 import { formatPercentage, formatPrice } from '@/lib/web3';
@@ -68,6 +69,16 @@ const TradingDashboard = () => {
     checkUSDCBalance,
     refreshSystemStatus,
   } = useDarkPool();
+
+  // Production ZKP Integration for actual trading
+  const {
+    balances: zkpBalances,
+    loading: zkpLoading,
+    error: zkpError,
+    tradeHistory: zkpTradeHistory,
+    refreshBalances: refreshZKPBalances,
+    isConnected: zkpConnected
+  } = useProductionZKP();
 
   // Auto-connect DarkPool when wallet connects
   useEffect(() => {
@@ -650,16 +661,21 @@ const TradingDashboard = () => {
                   <div className="space-y-1">
                     <div className="text-lg font-semibold flex items-center space-x-2">
                       <span>
-                        {darkPoolBalance ? 
-                          (parseFloat(darkPoolBalance.available || '0') + parseFloat(darkPoolBalance.locked || '0')).toFixed(4) 
-                          : '0.0000'
+                        {zkpBalances?.hbar ? 
+                          parseFloat(zkpBalances.hbar).toFixed(4) 
+                          : (darkPoolBalance ? 
+                              (parseFloat(darkPoolBalance.available || '0') + parseFloat(darkPoolBalance.locked || '0')).toFixed(4) 
+                              : '0.0000')
                         } HBAR
                       </span>
                     </div>
                     <div className="text-xs text-muted-foreground">
-                      Available: {darkPoolBalance?.available || '0.0000'} HBAR
+                      {zkpBalances?.hbar ? 
+                        `ZKP Available: ${parseFloat(zkpBalances.hbar).toFixed(4)} HBAR` 
+                        : `Available: ${darkPoolBalance?.available || '0.0000'} HBAR`
+                      }
                     </div>
-                    {darkPoolBalance?.locked && parseFloat(darkPoolBalance.locked) > 0 && (
+                    {!zkpBalances?.hbar && darkPoolBalance?.locked && parseFloat(darkPoolBalance.locked) > 0 && (
                       <div className="text-xs text-muted-foreground">
                         Locked in positions: {darkPoolBalance.locked} HBAR
                       </div>
@@ -670,22 +686,27 @@ const TradingDashboard = () => {
                   <div className="space-y-1 pt-2 border-t border-white/10">
                     <div className="text-lg font-semibold flex items-center space-x-2">
                       <span className="text-neon-blue">
-                        {darkPoolUSDCBalance ? 
-                          (parseFloat(darkPoolUSDCBalance.available || '0') + parseFloat(darkPoolUSDCBalance.locked || '0')).toFixed(6) 
-                          : '0.000000'
+                        {zkpBalances?.usdc ? 
+                          parseFloat(zkpBalances.usdc).toFixed(6) 
+                          : (darkPoolUSDCBalance ? 
+                              (parseFloat(darkPoolUSDCBalance.available || '0') + parseFloat(darkPoolUSDCBalance.locked || '0')).toFixed(6) 
+                              : '0.000000')
                         } USDC
                       </span>
                     </div>
                     <div className="text-xs text-muted-foreground">
-                      Available: {darkPoolUSDCBalance?.available ? parseFloat(darkPoolUSDCBalance.available).toFixed(6) : '0.000000'} USDC
+                      {zkpBalances?.usdc ? 
+                        `ZKP Available: ${parseFloat(zkpBalances.usdc).toFixed(6)} USDC` 
+                        : `Available: ${darkPoolUSDCBalance?.available ? parseFloat(darkPoolUSDCBalance.available).toFixed(6) : '0.000000'} USDC`
+                      }
                     </div>
-                    {darkPoolUSDCBalance?.locked && parseFloat(darkPoolUSDCBalance.locked) > 0 && (
+                    {!zkpBalances?.usdc && darkPoolUSDCBalance?.locked && parseFloat(darkPoolUSDCBalance.locked) > 0 && (
                       <div className="text-xs text-muted-foreground">
                         Locked in positions: {parseFloat(darkPoolUSDCBalance.locked).toFixed(6)} USDC
                       </div>
                     )}
                     <div className="text-xs text-neon-blue">
-                      💰 CompactDarkPoolDEX Contract
+                      💰 {zkpBalances ? 'ZKP Production DarkPool' : 'CompactDarkPoolDEX Contract'}
                     </div>
                   </div>
                   

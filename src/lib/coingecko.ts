@@ -38,15 +38,15 @@ export const fetchMarketData = async (coinIds: string[]): Promise<MarketData[]> 
     // Check cache first
     const cachedData = marketDataCache.getMarketData(coinIds);
     if (cachedData) {
-      console.log('📦 Using cached market data:', cachedData);
+      // console.log('📦 Using cached market data:', cachedData);
       return cachedData;
     }
 
-    console.log('🌐 Fetching fresh market data from CoinGecko for:', coinIds);
+    // console.log('🌐 Fetching fresh market data from CoinGecko for:', coinIds);
     
     const idsString = coinIds.join(',');
     const apiUrl = `${COINGECKO_BASE_URL}/coins/markets?vs_currency=usd&ids=${idsString}&order=market_cap_desc&per_page=50&page=1&sparkline=true&price_change_percentage=24h`;
-    console.log('📡 CoinGecko API URL:', apiUrl);
+    // console.log('📡 CoinGecko API URL:', apiUrl);
     
     const response = await fetch(apiUrl, {
       headers: {
@@ -55,7 +55,7 @@ export const fetchMarketData = async (coinIds: string[]): Promise<MarketData[]> 
       },
     });
     
-    console.log('📊 CoinGecko Response Status:', response.status, response.statusText);
+    // console.log('📊 CoinGecko Response Status:', response.status, response.statusText);
     
     if (!response.ok) {
       if (response.status === 429) {
@@ -67,8 +67,8 @@ export const fetchMarketData = async (coinIds: string[]): Promise<MarketData[]> 
     }
     
     const data = await response.json();
-    console.log('✅ CoinGecko API data received:', data.length, 'coins');
-    console.log('📈 Sample coin data:', data[0]);
+    // console.log('✅ CoinGecko API data received:', data.length, 'coins');
+    // console.log('📈 Sample coin data:', data[0]);
     
     if (!Array.isArray(data) || data.length === 0) {
       console.warn('⚠️ Empty or invalid API response');
@@ -117,7 +117,7 @@ export const fetchChartData = async (coinId: string, days: number = 1): Promise<
       return cachedData;
     }
 
-    console.log('🌐 Fetching fresh chart data from CoinGecko for:', coinId, days, 'days');
+    // console.log('🌐 Fetching fresh chart data from CoinGecko for:', coinId, days, 'days');
     
     const response = await fetch(
       `${COINGECKO_BASE_URL}/coins/${coinId}/market_chart?vs_currency=usd&days=${days}&interval=${days <= 1 ? 'hourly' : 'daily'}`,

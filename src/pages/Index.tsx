@@ -4,6 +4,7 @@ import GameHub from '@/components/GameHub';
 import Hero from '@/components/Hero';
 import Portfolio from '@/components/Portfolio';
 import TradingDashboard from '@/components/TradingDashboard';
+import { ZKPTradingInterface } from '@/components/ZKPTrading';
 import { Button } from '@/components/ui/button';
 import {
     Brain,
@@ -24,6 +25,7 @@ const Index = () => {
   const navigation = [
     { id: 'hero', label: 'Home', icon: Home },
     { id: 'trading', label: 'Trading', icon: TrendingUp },
+    { id: 'zkp-trading', label: 'Private Trading', icon: Shield },
     { id: 'portfolio', label: 'Portfolio', icon: Wallet },
     { id: 'ai', label: 'AI Assistant', icon: Brain },
     { id: 'game', label: 'Game Hub', icon: Gamepad2 },
@@ -35,6 +37,8 @@ const Index = () => {
         return <Hero onNavigate={setActiveSection} />;
       case 'trading':
         return <TradingDashboard />;
+      case 'zkp-trading':
+        return <ZKPTradingInterface />;
       case 'portfolio':
         return <Portfolio />;
       case 'ai':

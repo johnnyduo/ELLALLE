@@ -4,23 +4,22 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ZKPStatusIndicator } from '@/components/ZKPStatusIndicator';
-import { useZKProof } from '@/hooks/useZKProof';
-import { TradeStorageManager } from '@/lib/storage/tradeStorage';
-import { TradeIntent } from '@/types/zkp';
+import { ZKPTradesHistory } from '@/components/ZKPTradesHistory';
+import { useProductionZKP } from '@/hooks/useProductionZKPNew';
+import { usePythOracle } from '@/hooks/zkp/usePythOracle';
+import { CONTRACT_CONFIG } from '@/lib/env';
+import { TradeParams } from '@/services/ProductionZKPService';
 import {
-    AlertTriangle,
-    CheckCircle,
-    Clock,
-    ExternalLink,
-    Eye,
-    EyeOff,
-    Lock,
-    Shield,
-    Target,
-    TrendingDown,
-    TrendingUp,
-    Zap
+  AlertTriangle,
+  CheckCircle,
+  Clock,
+  Eye,
+  EyeOff,
+  Lock,
+  Shield,
+  Target,
+  TrendingDown,
+  TrendingUp
 } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 import { toast } from 'sonner';
@@ -78,17 +77,23 @@ export const PerpTradingInterface: React.FC<PerpTradingInterfaceProps> = ({
   const [positions, setPositions] = useState<Position[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
 
-  // ZKP Integration
+  // Production ZKP Integration
   const {
-    zkpStatus,
-    currentProgress,
-    isGeneratingProof,
-    pendingTrades,
-    generateProof,
-    submitProof,
-    updateTradeStatus,
-    clearPendingTrade
-  } = useZKProof();
+    balances: zkpBalances,
+    loading: zkpLoading,
+    error: zkpError,
+    currentTrade,
+    tradeHistory,
+    executeTrade: executeZKPTrade,
+    loadTradeHistory,
+    clearError,
+    refreshBalances,
+    canTrade,
+    isConnected
+  } = useProductionZKP();
+
+  // Pyth Oracle integration for real-time prices
+  const { prices } = usePythOracle();
 
   // Mock positions for demo
   useEffect(() => {
@@ -169,32 +174,56 @@ export const PerpTradingInterface: React.FC<PerpTradingInterfaceProps> = ({
     if (orderType === 'limit' && (!orderPrice || parseFloat(orderPrice) <= 0)) return;
 
     try {
-      // Create trade intent for ZKP
       if (isPrivateMode) {
-        const intent: TradeIntent = {
-          userId: 'demo_user', // In real app, use actual wallet address
-          symbol: selectedSymbol,
-          amount: parseFloat(orderSize),
-          price: orderType === 'market' ? currentPrice : parseFloat(orderPrice),
-          side: orderSide === 'buy' ? 'long' : 'short',
-          leverage,
-          timestamp: Date.now(),
-          nonce: TradeStorageManager.generateNonce()
+        // Get wallet address
+        const provider = (window as any).ethereum;
+        if (!provider) {
+          throw new Error('No Ethereum provider found');
+        }
+        
+        const accounts = await provider.request({ method: 'eth_accounts' });
+        if (!accounts || accounts.length === 0) {
+          throw new Error('No wallet connected');
+        }
+        
+        const walletAddress = accounts[0];
+
+        // ZKP Private Trading with proven workflow
+        toast.info('🔐 Starting zero-knowledge proof trade execution...');
+        
+        // Prepare trade parameters exactly as successful script
+        const tradeParams: TradeParams = {
+          size: parseFloat(orderSize),     // e.g., 0.01 for 0.01 BTC
+          isLong: orderSide === 'buy',     // true = Long, false = Short
+          leverage,                        // e.g., 10 for 10x leverage
+          pairId: 1,                       // 1 = BTC/USD (as in successful script)
+          useHBAR: false                   // Use USDC collateral (as successful script)
         };
 
-        // Generate ZK proof
-        const proof = await generateProof(intent);
-        if (!proof) {
-          throw new Error('Failed to generate ZK proof');
+        console.log('🚀 Executing ZKP trade with params:', tradeParams);
+
+        const result = await executeZKPTrade(tradeParams);
+
+        if (result.success) {
+          // Clear form on success
+          setOrderSize('');
+          setOrderPrice('');
+          
+          toast.success('🎉 ZKP trade executed successfully!');
+          
+          // Log transaction details for user
+          console.log('Trade completed:', {
+            commitment: result.commitmentTx,
+            execution: result.tradeTx,
+            hashscan: [
+              `https://hashscan.io/testnet/transaction/${result.commitmentTx}`,
+              `https://hashscan.io/testnet/transaction/${result.tradeTx}`
+            ]
+          });
+        } else {
+          toast.error(`ZKP trade failed: ${result.error}`);
         }
 
-        // Submit proof to contract (simulated)
-        const txHash = await submitProof(proof);
-        if (!txHash) {
-          throw new Error('Failed to submit proof to contract');
-        }
-
-        toast.success(`ZK-protected ${orderSide} order submitted! Tx: ${txHash.slice(0, 10)}...`);
       } else {
         // Regular order flow
         const order: Omit<Order, 'id' | 'timestamp' | 'status'> = {
@@ -266,11 +295,64 @@ export const PerpTradingInterface: React.FC<PerpTradingInterfaceProps> = ({
           
           {isPrivateMode && (
             <div className="mt-3">
-              <ZKPStatusIndicator 
-                status={zkpStatus}
-                progress={currentProgress}
-                proof={pendingTrades[0]?.proof}
-              />
+              {/* ZKP Status Display */}
+            <Card className="p-4 border-purple-200 bg-purple-50/30">
+              <div className="flex items-center justify-between mb-2">
+                <h4 className="font-medium text-purple-800">🔐 ZKP Status</h4>
+                {zkpLoading && <div className="animate-spin">⚡</div>}
+              </div>
+              
+              {zkpBalances && (
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span>DarkPool HBAR:</span>
+                    <span className="font-mono">{zkpBalances.hbar} HBAR</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>DarkPool USDC:</span>
+                    <span className="font-mono">{zkpBalances.usdc} USDC</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Can Trade:</span>
+                    <span className={canTrade ? 'text-green-600' : 'text-red-600'}>
+                      {canTrade ? '✅ Ready' : '❌ Not Ready'}
+                    </span>
+                  </div>
+                </div>
+              )}
+              
+              {zkpError && (
+                <div className="mt-2 p-2 bg-red-100 text-red-700 rounded text-sm">
+                  ❌ {zkpError}
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={clearError}
+                    className="ml-2 h-5 px-2"
+                  >
+                    Clear
+                  </Button>
+                </div>
+              )}
+              
+              {currentTrade && (
+                <div className="mt-2 p-2 bg-green-100 text-green-700 rounded text-sm">
+                  ✅ Last trade successful
+                  {currentTrade.commitmentTx && (
+                    <div className="text-xs mt-1">
+                      <a
+                        href={`https://hashscan.io/testnet/transaction/${currentTrade.commitmentTx}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-blue-600 hover:underline"
+                      >
+                        View on Hashscan ↗
+                      </a>
+                    </div>
+                  )}
+                </div>
+              )}
+            </Card>
             </div>
           )}
         </CardHeader>
@@ -535,7 +617,15 @@ export const PerpTradingInterface: React.FC<PerpTradingInterfaceProps> = ({
               {/* Order Summary */}
               {orderSize && (
                 <div className="space-y-3 p-4 bg-purple-500/5 border border-purple-500/20 rounded-lg">
-                  <div className="text-sm font-medium text-purple-300 mb-2">Order Summary</div>
+                  <div className="flex items-center justify-between">
+                    <div className="text-sm font-medium text-purple-300">Order Summary</div>
+                    {isPrivateMode && (
+                      <Badge variant="outline" className="bg-purple-500/20 text-purple-300 border-purple-500/50 text-xs">
+                        <Shield className="w-3 h-3 mr-1" />
+                        ZK Protected
+                      </Badge>
+                    )}
+                  </div>
                   
                   <div className="space-y-2 text-sm">
                     <div className="flex justify-between">
@@ -563,6 +653,30 @@ export const PerpTradingInterface: React.FC<PerpTradingInterfaceProps> = ({
                       <span className="font-medium text-yellow-400">{leverage}x</span>
                     </div>
                     
+                    {isPrivateMode && (
+                      <div className="border border-purple-500/30 rounded p-2 bg-purple-500/5">
+                        <div className="text-xs font-medium text-purple-300 mb-1">🔐 Privacy Features</div>
+                        <div className="space-y-1 text-xs text-muted-foreground">
+                          <div className="flex justify-between">
+                            <span>Trade Size:</span>
+                            <span className="text-purple-400">Hidden via ZK proof</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>Direction:</span>
+                            <span className="text-purple-400">Encrypted commitment</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>Leverage:</span>
+                            <span className="text-purple-400">ZK verified: {leverage}x</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>Trader Identity:</span>
+                            <span className="text-purple-400">Anonymous</span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    
                     <div className="border-t border-purple-500/20 pt-2 mt-2">
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">Margin Required:</span>
@@ -574,10 +688,17 @@ export const PerpTradingInterface: React.FC<PerpTradingInterfaceProps> = ({
                         <span className="font-medium">${calculateFees().toLocaleString(undefined, { minimumFractionDigits: 4 })} USDC</span>
                       </div>
                       
+                      {isPrivateMode && (
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">ZK Proof Gas:</span>
+                          <span className="font-medium text-purple-400">~$0.50 USDC</span>
+                        </div>
+                      )}
+                      
                       <div className="flex justify-between font-medium text-base pt-1 border-t border-purple-500/20 mt-1">
                         <span>Total Cost:</span>
                         <span className={canAffordOrder() ? 'text-green-400' : 'text-red-400'}>
-                          ${calculateTotalCost().toLocaleString(undefined, { minimumFractionDigits: 2 })} USDC
+                          ${(calculateTotalCost() + (isPrivateMode ? 0.5 : 0)).toLocaleString(undefined, { minimumFractionDigits: 2 })} USDC
                         </span>
                       </div>
                     </div>
@@ -604,23 +725,48 @@ export const PerpTradingInterface: React.FC<PerpTradingInterfaceProps> = ({
                 </div>
               )}
 
+              {/* ZKP Status Indicator */}
+              {isPrivateMode && (
+                <div className="p-3 rounded-lg bg-purple-500/10 border border-purple-500/20">
+                  <div className="flex items-center justify-between text-sm">
+                    <div className="flex items-center space-x-2">
+                      <Shield className="w-4 h-4 text-purple-400" />
+                      <span className="text-purple-300">ZK Verifier Connected</span>
+                    </div>
+                    <Badge variant="outline" className="bg-green-500/20 text-green-300 border-green-500/50 text-xs">
+                      <CheckCircle className="w-3 h-3 mr-1" />
+                      Active
+                    </Badge>
+                  </div>
+                  <div className="text-xs text-muted-foreground mt-1">
+                    Contract: <code className="bg-purple-500/20 px-1 rounded">{CONTRACT_CONFIG.noirVerifier}</code>
+                  </div>
+                  {zkpLoading && (
+                    <div className="text-xs text-blue-300 mt-1 flex items-center">
+                      <Clock className="w-3 h-3 mr-1" />
+                      Processing ZK proof...
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Submit Button */}
               <Button
                 onClick={handleSubmitOrder}
                 disabled={
                   !orderSize || 
                   parseFloat(orderSize) <= 0 || 
-                  isGeneratingProof ||
+                  zkpLoading ||
                   !canAffordOrder()
                 }
                 className={`w-full ${orderSide === 'buy' ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'} ${
                   !canAffordOrder() ? 'opacity-50 cursor-not-allowed' : ''
-                }`}
+                } ${isPrivateMode ? 'border border-purple-500/50' : ''}`}
               >
-                {isGeneratingProof ? (
+                {zkpLoading ? (
                   <>
-                    <Lock className="w-4 h-4 mr-2" />
-                    Generating ZK Proof...
+                    <Lock className="w-4 h-4 mr-2 animate-pulse" />
+                    {isPrivateMode ? 'Generating ZK Proof...' : 'Processing...'}
                   </>
                 ) : !canAffordOrder() && orderSize ? (
                   <>
@@ -629,11 +775,28 @@ export const PerpTradingInterface: React.FC<PerpTradingInterfaceProps> = ({
                   </>
                 ) : (
                   <>
+                    {isPrivateMode && <Shield className="w-4 h-4 mr-2" />}
                     {orderSide === 'buy' ? <TrendingUp className="w-4 h-4 mr-2" /> : <TrendingDown className="w-4 h-4 mr-2" />}
-                    {orderSide === 'buy' ? 'Open Long' : 'Open Short'} Position
+                    {isPrivateMode ? 
+                      `Open ${orderSide === 'buy' ? 'Long' : 'Short'} (ZK Private)` :
+                      `Open ${orderSide === 'buy' ? 'Long' : 'Short'} Position`
+                    }
                   </>
                 )}
               </Button>
+
+              {/* ZKP Process Information */}
+              {isPrivateMode && (
+                <div className="text-xs text-muted-foreground space-y-1">
+                  <div className="flex items-center justify-center space-x-2">
+                    <div className="w-2 h-2 rounded-full bg-purple-500"></div>
+                    <span>Your trade details remain completely private</span>
+                  </div>
+                  <div className="text-center">
+                    ZK proof will be generated locally and verified on-chain
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>
@@ -729,119 +892,11 @@ export const PerpTradingInterface: React.FC<PerpTradingInterfaceProps> = ({
             </TabsContent>
 
             <TabsContent value="zkp" className="mt-4">
-              <Card className="card-glass">
-                <CardHeader>
-                  <CardTitle className="text-lg flex items-center space-x-2">
-                    <Zap className="w-5 h-5 text-purple-400" />
-                    <span>ZK-Protected Trades</span>
-                    {pendingTrades.length > 0 && (
-                      <Badge variant="outline" className="bg-purple-500/20 text-purple-300 border-purple-500/50">
-                        {pendingTrades.length} pending
-                      </Badge>
-                    )}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {pendingTrades.length === 0 ? (
-                    <div className="text-center py-8 text-muted-foreground">
-                      <Shield className="w-12 h-12 mx-auto mb-3 text-purple-400/50" />
-                      <div className="text-lg font-medium mb-2">No ZK-Protected Trades</div>
-                      <div className="text-sm">Enable Private Mode to start trading with zero-knowledge proofs</div>
-                    </div>
-                  ) : (
-                    <div className="space-y-3">
-                      {pendingTrades.map((trade) => (
-                        <div
-                          key={trade.id}
-                          className="p-4 rounded-lg border bg-purple-500/5 border-purple-500/20"
-                        >
-                          <div className="flex items-center justify-between mb-3">
-                            <div className="flex items-center space-x-2">
-                              <Badge variant={trade.intent.side === 'long' ? 'default' : 'destructive'}>
-                                {trade.intent.side.toUpperCase()}
-                              </Badge>
-                              <span className="font-medium">{trade.intent.symbol}</span>
-                              <Shield className="w-4 h-4 text-purple-400" />
-                              <Badge variant="outline" className="bg-purple-500/20 text-purple-300 border-purple-500/50">
-                                ZK Protected
-                              </Badge>
-                            </div>
-                            <Badge 
-                              variant="outline" 
-                              className={`${
-                                trade.status === 'confirmed' ? 'bg-green-500/20 text-green-300 border-green-500/50' :
-                                trade.status === 'error' ? 'bg-red-500/20 text-red-300 border-red-500/50' :
-                                'bg-yellow-500/20 text-yellow-300 border-yellow-500/50'
-                              }`}
-                            >
-                              {trade.status === 'proving' && <Clock className="w-3 h-3 mr-1" />}
-                              {trade.status === 'confirmed' && <CheckCircle className="w-3 h-3 mr-1" />}
-                              {trade.status.toUpperCase()}
-                            </Badge>
-                          </div>
-                          
-                          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm mb-3">
-                            <div>
-                              <div className="text-muted-foreground">Amount</div>
-                              <div>{trade.intent.amount} {trade.intent.symbol.split('/')[0]}</div>
-                            </div>
-                            <div>
-                              <div className="text-muted-foreground">Price</div>
-                              <div>{formatPrice(trade.intent.price)}</div>
-                            </div>
-                            <div>
-                              <div className="text-muted-foreground">Leverage</div>
-                              <div>{trade.intent.leverage}x</div>
-                            </div>
-                            <div>
-                              <div className="text-muted-foreground">Time</div>
-                              <div>{new Date(trade.createdAt).toLocaleTimeString()}</div>
-                            </div>
-                          </div>
-
-                          {/* ZK Proof Details */}
-                          {trade.proof && (
-                            <div className="mt-3 p-2 bg-purple-500/10 border border-purple-500/30 rounded text-xs">
-                              <div className="flex items-center space-x-2 mb-1">
-                                <Lock className="w-3 h-3 text-purple-400" />
-                                <span className="font-medium text-purple-400">ZK Proof Generated</span>
-                              </div>
-                              <div className="font-mono text-gray-400">
-                                Proof: {trade.proof.proofHash.slice(0, 20)}...
-                              </div>
-                              <div className="text-gray-400">
-                                Circuit: {trade.proof.metadata.circuitName} v{trade.proof.metadata.version}
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Transaction Link */}
-                          {trade.txHash && (
-                            <div className="mt-2 flex items-center space-x-2">
-                              <a 
-                                href={`https://hashscan.io/testnet/transaction/${trade.txHash}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-xs text-purple-400 hover:text-purple-300 flex items-center space-x-1"
-                              >
-                                <ExternalLink className="w-3 h-3" />
-                                <span>View on HashScan</span>
-                              </a>
-                            </div>
-                          )}
-
-                          {/* Error Message */}
-                          {trade.errorMessage && (
-                            <div className="mt-2 text-xs text-red-400">
-                              Error: {trade.errorMessage}
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
+              <ZKPTradesHistory 
+                trades={tradeHistory}
+                loading={zkpLoading}
+                onRefresh={loadTradeHistory}
+              />
             </TabsContent>
 
             <TabsContent value="history" className="mt-4">

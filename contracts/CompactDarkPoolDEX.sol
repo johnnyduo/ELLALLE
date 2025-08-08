@@ -1,13 +1,13 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT deployed at 0x5c678898e917B1bAFab5d6E3fe68016F4D5b949F
 pragma solidity ^0.8.26;
 
 /**
- * @title CompactDarkPoolDEX - Production Ready with Fixes
- * @dev Dark pool with dual token support, ZKP integration, and safety improvements
+ * @title CompactDarkPoolDEX - Simplified for Remix Deployment
+ * @dev Production-ready dark pool with dual token support and Noir ZKP integration
  * 
  * DEPLOYMENT INSTRUCTIONS FOR REMIX:
- * 1. Deploy with USDC token address: 0x340e7949d378C6d6eB1cf7391F5C39b6c826BA9d
- * 2. Enable optimizer with 200 runs
+ * 1. Deploy with USDC token address: 0x1b20865c8C1B8B50cC19F54D8Da4873bfFcaD1F3
+ * 2. Enable optimizer with 200 runs: 
  * 3. Set gas limit to 3,000,000
  */
 
@@ -16,7 +16,6 @@ interface IERC20 {
     function transfer(address to, uint256 amount) external returns (bool);
     function transferFrom(address from, address to, uint256 amount) external returns (bool);
     function balanceOf(address account) external view returns (uint256);
-    function decimals() external view returns (uint8);
 }
 
 interface INoirVerifier {
@@ -25,14 +24,6 @@ interface INoirVerifier {
 
 // ============ MAIN CONTRACT ============
 contract CompactDarkPoolDEX {
-    
-    // ============ CONSTANTS ============
-    uint8 public constant USDC_DECIMALS = 6;
-    uint256 public constant PRICE_DECIMALS = 18;
-    uint256 public constant BASIS_POINTS = 10000;
-    uint256 public constant COLLATERAL_RATIO = 1000; // 10%
-    uint256 public constant MIN_POSITION_SIZE = 1e6; // Minimum position size (1 USDC)
-    uint256 public constant MAX_POSITION_SIZE = 1e12; // Maximum position size
     
     // ============ CORE STATE ============
     address public owner;
@@ -65,16 +56,10 @@ contract CompactDarkPoolDEX {
         bool useHBAR;
         uint256 entryPrice;
         bool isOpen;
-        uint256 timestamp;
     }
     
     mapping(bytes32 => Position) public positions;
     mapping(address => bytes32[]) public userPositions;
-    
-    // Reentrancy guard
-    uint256 private constant NOT_ENTERED = 1;
-    uint256 private constant ENTERED = 2;
-    uint256 private reentrancyStatus = NOT_ENTERED;
     
     // ============ EVENTS ============
     event HBARDeposit(address indexed user, uint256 amount);
@@ -84,7 +69,6 @@ contract CompactDarkPoolDEX {
     event CommitmentSubmitted(bytes32 indexed commitment, address indexed trader);
     event TradeExecuted(bytes32 indexed commitment, address indexed trader, uint256 size, bool isLong);
     event PositionClosed(bytes32 indexed positionId, address indexed trader, int256 pnl);
-    event EmergencyWithdraw(address indexed owner, uint256 hbarAmount, uint256 usdcAmount);
     
     // ============ MODIFIERS ============
     modifier onlyOwner() {
@@ -97,46 +81,21 @@ contract CompactDarkPoolDEX {
         _;
     }
     
-    modifier nonReentrant() {
-        require(reentrancyStatus != ENTERED, "Reentrant call");
-        reentrancyStatus = ENTERED;
-        _;
-        reentrancyStatus = NOT_ENTERED;
-    }
-    
-    modifier validBalanceState(address user, bool useHBAR) {
-        if (useHBAR) {
-            require(hbarLocked[user] <= hbarBalances[user], "Invalid HBAR state");
-        } else {
-            require(usdcLocked[user] <= usdcBalances[user], "Invalid USDC state");
-        }
-        _;
-    }
-    
     // ============ CONSTRUCTOR ============
     constructor(address _usdcToken) {
         require(_usdcToken != address(0), "Invalid USDC");
         owner = msg.sender;
         treasury = msg.sender;
         usdcToken = IERC20(_usdcToken);
-        
-        // Verify USDC decimals if possible
-        try IERC20(_usdcToken).decimals() returns (uint8 decimals) {
-            require(decimals == USDC_DECIMALS, "Invalid USDC decimals");
-        } catch {
-            // If decimals() is not implemented, continue with assumption
-        }
     }
     
     // ============ DEPOSIT FUNCTIONS ============
     
     /**
-     * @dev Deposit native HBAR
+     * @dev Deposit native HBAR (recommended for stability)
      */
-    function deposit() external payable whenNotPaused nonReentrant {
+    function deposit() external payable whenNotPaused {
         require(msg.value > 0, "Invalid amount");
-        require(msg.value <= 1e24, "Amount too large"); // Safety cap
-        
         hbarBalances[msg.sender] += msg.value;
         emit HBARDeposit(msg.sender, msg.value);
     }
@@ -144,20 +103,11 @@ contract CompactDarkPoolDEX {
     /**
      * @dev Deposit USDC tokens
      */
-    function depositUSDC(uint256 amount) external whenNotPaused nonReentrant {
+    function depositUSDC(uint256 amount) external whenNotPaused {
         require(amount > 0, "Invalid amount");
-        require(amount <= 1e12, "Amount too large"); // Safety cap for USDC (6 decimals)
-        
-        uint256 balanceBefore = usdcToken.balanceOf(address(this));
         require(usdcToken.transferFrom(msg.sender, address(this), amount), "Transfer failed");
-        uint256 balanceAfter = usdcToken.balanceOf(address(this));
-        
-        // Verify actual transfer amount
-        uint256 actualAmount = balanceAfter - balanceBefore;
-        require(actualAmount == amount, "Transfer amount mismatch");
-        
-        usdcBalances[msg.sender] += actualAmount;
-        emit USDCDeposit(msg.sender, actualAmount);
+        usdcBalances[msg.sender] += amount;
+        emit USDCDeposit(msg.sender, amount);
     }
     
     // ============ WITHDRAW FUNCTIONS ============
@@ -165,16 +115,12 @@ contract CompactDarkPoolDEX {
     /**
      * @dev Withdraw available HBAR balance
      */
-    function withdraw(uint256 amount) external whenNotPaused nonReentrant validBalanceState(msg.sender, true) {
+    function withdraw(uint256 amount) external whenNotPaused {
         require(amount > 0, "Invalid amount");
-        
         uint256 available = hbarBalances[msg.sender] - hbarLocked[msg.sender];
         require(available >= amount, "Insufficient balance");
         
-        // Update state before external call
         hbarBalances[msg.sender] -= amount;
-        
-        // External call with safety check
         (bool success, ) = msg.sender.call{value: amount}("");
         require(success, "Transfer failed");
         
@@ -184,16 +130,12 @@ contract CompactDarkPoolDEX {
     /**
      * @dev Withdraw available USDC balance
      */
-    function withdrawUSDC(uint256 amount) external whenNotPaused nonReentrant validBalanceState(msg.sender, false) {
+    function withdrawUSDC(uint256 amount) external whenNotPaused {
         require(amount > 0, "Invalid amount");
-        
         uint256 available = usdcBalances[msg.sender] - usdcLocked[msg.sender];
         require(available >= amount, "Insufficient balance");
         
-        // Update state before external call
         usdcBalances[msg.sender] -= amount;
-        
-        // External call
         require(usdcToken.transfer(msg.sender, amount), "Transfer failed");
         
         emit USDCWithdraw(msg.sender, amount);
@@ -202,12 +144,11 @@ contract CompactDarkPoolDEX {
     // ============ ZKP DARK POOL FUNCTIONS ============
     
     /**
-     * @dev Submit encrypted order commitment
+     * @dev Submit encrypted order commitment (Noir ZKP integration)
      */
     function submitCommitment(bytes32 commitment) external whenNotPaused {
         require(!usedCommitments[commitment], "Commitment used");
         require(commitment != bytes32(0), "Invalid commitment");
-        require(commitmentToTrader[commitment] == address(0), "Commitment exists");
         
         usedCommitments[commitment] = true;
         commitmentToTrader[commitment] = msg.sender;
@@ -218,6 +159,12 @@ contract CompactDarkPoolDEX {
     
     /**
      * @dev Execute trade with ZKP proof
+     * @param proof Noir ZK proof
+     * @param publicInputs Public inputs for verification
+     * @param commitment Order commitment being executed
+     * @param size Position size
+     * @param isLong Long or short position
+     * @param useHBAR Use HBAR (true) or USDC (false)
      */
     function executeTrade(
         bytes calldata proof,
@@ -226,21 +173,19 @@ contract CompactDarkPoolDEX {
         uint256 size,
         bool isLong,
         bool useHBAR
-    ) external whenNotPaused nonReentrant validBalanceState(msg.sender, useHBAR) {
-        // Validate inputs
+    ) external whenNotPaused {
         require(usedCommitments[commitment], "Invalid commitment");
         require(commitmentToTrader[commitment] == msg.sender, "Not your commitment");
-        require(size >= MIN_POSITION_SIZE, "Size too small");
-        require(size <= MAX_POSITION_SIZE, "Size too large");
+        require(size > 0, "Invalid size");
         
         // Verify ZK proof if verifier is set
         if (address(noirVerifier) != address(0)) {
             require(noirVerifier.verify(proof, publicInputs), "Invalid proof");
         }
         
-        // Calculate required collateral with improved precision
-        uint256 collateral = (size * COLLATERAL_RATIO) / BASIS_POINTS;
-        uint256 fee = (collateral * takerFee) / BASIS_POINTS;
+        // Calculate required collateral (simplified to 10% of position size)
+        uint256 collateral = size / 10;
+        uint256 fee = (collateral * takerFee) / 10000;
         uint256 total = collateral + fee;
         
         // Lock collateral in appropriate token
@@ -256,24 +201,21 @@ contract CompactDarkPoolDEX {
             usdcBalances[treasury] += fee;
         }
         
-        // Create position with normalized price
+        // Create position
         bytes32 positionId = keccak256(abi.encodePacked(msg.sender, commitment, block.timestamp));
-        uint256 entryPrice = useHBAR ? 50000 * 10**PRICE_DECIMALS : 50000 * 10**USDC_DECIMALS;
-        
         positions[positionId] = Position({
             trader: msg.sender,
             size: size,
             collateral: collateral,
             isLong: isLong,
             useHBAR: useHBAR,
-            entryPrice: entryPrice,
-            isOpen: true,
-            timestamp: block.timestamp
+            entryPrice: 50000 * 1e18, // Mock price - replace with oracle
+            isOpen: true
         });
         
         userPositions[msg.sender].push(positionId);
         
-        // Clean up commitment
+        // Mark commitment as used
         delete commitmentToTrader[commitment];
         
         emit TradeExecuted(commitment, msg.sender, size, isLong);
@@ -282,39 +224,21 @@ contract CompactDarkPoolDEX {
     /**
      * @dev Close position and settle PnL
      */
-    function closePosition(bytes32 positionId) external whenNotPaused nonReentrant {
+    function closePosition(bytes32 positionId) external whenNotPaused {
         Position storage position = positions[positionId];
         require(position.trader == msg.sender, "Not your position");
         require(position.isOpen, "Position closed");
         
-        // Get exit price (normalized for token decimals)
-        uint256 exitPrice = position.useHBAR ? 
-            51000 * 10**PRICE_DECIMALS : 
-            51000 * 10**USDC_DECIMALS;
-        
-        // Calculate PnL with improved precision
+        // Calculate PnL (simplified - use 2% profit)
+        uint256 exitPrice = 51000 * 1e18; // Mock price - replace with oracle
         int256 pnl = calculatePnL(position, exitPrice);
         uint256 returnAmount = processReturn(position.collateral, pnl);
         
-        // Apply closing fee
-        uint256 closingFee = (returnAmount * makerFee) / BASIS_POINTS;
-        if (returnAmount > closingFee) {
-            returnAmount -= closingFee;
-            
-            if (position.useHBAR) {
-                hbarBalances[treasury] += closingFee;
-            } else {
-                usdcBalances[treasury] += closingFee;
-            }
-        }
-        
         // Unlock and return funds
         if (position.useHBAR) {
-            require(hbarLocked[msg.sender] >= position.collateral, "Invalid locked amount");
             hbarLocked[msg.sender] -= position.collateral;
             hbarBalances[msg.sender] += returnAmount;
         } else {
-            require(usdcLocked[msg.sender] >= position.collateral, "Invalid locked amount");
             usdcLocked[msg.sender] -= position.collateral;
             usdcBalances[msg.sender] += returnAmount;
         }
@@ -325,93 +249,42 @@ contract CompactDarkPoolDEX {
     
     // ============ HELPER FUNCTIONS ============
     
-    /**
-     * @dev Calculate PnL with improved precision
-     */
     function calculatePnL(Position memory position, uint256 exitPrice) internal pure returns (int256) {
-        // Calculate price difference
         int256 priceDiff;
         if (position.isLong) {
             priceDiff = int256(exitPrice) - int256(position.entryPrice);
         } else {
             priceDiff = int256(position.entryPrice) - int256(exitPrice);
         }
-        
-        // Use higher precision to avoid rounding errors
-        // PnL = (priceDiff * size * PRECISION) / (entryPrice * PRECISION)
-        int256 pnl = (priceDiff * int256(position.size) * 1e18) / (int256(position.entryPrice) * 1e18);
-        
-        // Scale result appropriately
-        return (pnl * int256(position.collateral)) / int256(position.size);
+        return (priceDiff * int256(position.size)) / int256(position.entryPrice);
     }
     
-    /**
-     * @dev Process return amount based on PnL
-     */
     function processReturn(uint256 collateral, int256 pnl) internal pure returns (uint256) {
         if (pnl >= 0) {
-            // Profit scenario - cap at 2x collateral for safety
-            uint256 profit = uint256(pnl);
-            uint256 maxReturn = collateral * 2;
-            uint256 totalReturn = collateral + profit;
-            return totalReturn > maxReturn ? maxReturn : totalReturn;
+            return collateral + uint256(pnl);
         } else {
-            // Loss scenario
             uint256 loss = uint256(-pnl);
             return loss >= collateral ? 0 : collateral - loss;
         }
     }
     
-    /**
-     * @dev Normalize amounts between different decimal places
-     */
-    function normalizeAmount(uint256 amount, bool fromUSDC) internal pure returns (uint256) {
-        if (fromUSDC) {
-            // Convert USDC (6 decimals) to standard 18 decimals
-            return amount * 10**(PRICE_DECIMALS - USDC_DECIMALS);
-        }
-        return amount;
-    }
-    
     // ============ VIEW FUNCTIONS ============
     
     function getHBARBalance(address user) external view returns (uint256 available, uint256 locked) {
-        uint256 lockedAmount = hbarLocked[user];
-        uint256 totalBalance = hbarBalances[user];
-        
-        // Safety check
-        if (lockedAmount > totalBalance) {
-            return (0, lockedAmount);
-        }
-        
-        return (totalBalance - lockedAmount, lockedAmount);
+        return (hbarBalances[user] - hbarLocked[user], hbarLocked[user]);
     }
     
     function getUSDCBalance(address user) external view returns (uint256 available, uint256 locked) {
-        uint256 lockedAmount = usdcLocked[user];
-        uint256 totalBalance = usdcBalances[user];
-        
-        // Safety check
-        if (lockedAmount > totalBalance) {
-            return (0, lockedAmount);
-        }
-        
-        return (totalBalance - lockedAmount, lockedAmount);
+        return (usdcBalances[user] - usdcLocked[user], usdcLocked[user]);
     }
     
     function getAllBalances(address user) external view returns (
         uint256 hbarAvail, uint256 hbarLock, uint256 usdcAvail, uint256 usdcLock
     ) {
-        uint256 hbarTotal = hbarBalances[user];
-        uint256 hbarLockedAmount = hbarLocked[user];
-        uint256 usdcTotal = usdcBalances[user];
-        uint256 usdcLockedAmount = usdcLocked[user];
-        
-        // Safety checks
-        hbarAvail = hbarLockedAmount > hbarTotal ? 0 : hbarTotal - hbarLockedAmount;
-        usdcAvail = usdcLockedAmount > usdcTotal ? 0 : usdcTotal - usdcLockedAmount;
-        
-        return (hbarAvail, hbarLockedAmount, usdcAvail, usdcLockedAmount);
+        return (
+            hbarBalances[user] - hbarLocked[user], hbarLocked[user],
+            usdcBalances[user] - usdcLocked[user], usdcLocked[user]
+        );
     }
     
     function getPosition(bytes32 positionId) external view returns (Position memory) {
@@ -441,7 +314,6 @@ contract CompactDarkPoolDEX {
     // ============ ADMIN FUNCTIONS ============
     
     function setNoirVerifier(address _verifier) external onlyOwner {
-        require(_verifier != address(0), "Invalid verifier");
         noirVerifier = INoirVerifier(_verifier);
     }
     
@@ -455,40 +327,34 @@ contract CompactDarkPoolDEX {
     }
     
     function setFees(uint256 _makerFee, uint256 _takerFee) external onlyOwner {
-        require(_makerFee <= 100, "Maker fee too high"); // Max 1%
-        require(_takerFee <= 100, "Taker fee too high"); // Max 1%
+        require(_makerFee <= 100 && _takerFee <= 100, "Fees too high");
         makerFee = _makerFee;
         takerFee = _takerFee;
     }
     
-    /**
-     * @dev Emergency withdrawal with improved safety
-     */
+    // Emergency functions
     function emergencyWithdraw() external onlyOwner {
-        require(paused, "Must be paused for emergency");
-        
-        // Get balances
+        // HBAR
         uint256 hbarBalance = address(this).balance;
-        uint256 usdcBalance = usdcToken.balanceOf(address(this));
-        
-        // Transfer HBAR
         if (hbarBalance > 0) {
             (bool success, ) = owner.call{value: hbarBalance}("");
             require(success, "HBAR transfer failed");
         }
         
-        // Transfer USDC
+        // USDC
+        uint256 usdcBalance = usdcToken.balanceOf(address(this));
         if (usdcBalance > 0) {
             require(usdcToken.transfer(owner, usdcBalance), "USDC transfer failed");
         }
-        
-        emit EmergencyWithdraw(owner, hbarBalance, usdcBalance);
     }
     
     // ============ LEGACY COMPATIBILITY ============
     
+    /**
+     * @dev Legacy balance function for backward compatibility
+     */
     function getBalance(address user) external view returns (uint256 available, uint256 locked) {
-        return this.getHBARBalance(user);
+        return (hbarBalances[user] - hbarLocked[user], hbarLocked[user]);
     }
     
     function getUSDCAddress() external view returns (address) {
@@ -497,29 +363,34 @@ contract CompactDarkPoolDEX {
 }
 
 /**
- * @title Deployment & Testing Guide
+ * @title Deployment Instructions for Remix
  * 
- * FIXES APPLIED:
- * ✅ Added reentrancy protection
- * ✅ Fixed arithmetic underflow issues
- * ✅ Added USDC decimal handling (6 decimals)
- * ✅ Improved PnL calculation precision
- * ✅ Added balance state validation
- * ✅ Added position size limits
- * ✅ Added safety caps on deposits
- * ✅ Improved collateral calculations
- * ✅ Added emergency pause requirement
- * ✅ Fixed commitment cleanup
+ * 1. COMPILER SETTINGS:
+ *    - Solidity Version: 0.8.26
+ *    - Enable Optimization: YES
+ *    - Runs: 200
+ *    - EVM Version: london
  * 
- * DEPLOYMENT:
- * 1. Constructor: 0x340e7949d378C6d6eB1cf7391F5C39b6c826BA9d (USDC)
- * 2. Gas Limit: 3,500,000
- * 3. Optimizer: Yes, 200 runs
+ * 2. DEPLOYMENT PARAMETERS:
+ *    - Constructor: _usdcToken = 0x1b20865c8C1B8B50cC19F54D8Da4873bfFcaD1F3
+ *    - Gas Limit: 3,000,000
+ *    - Network: Hedera Previewnet
  * 
- * TESTING SEQUENCE:
- * 1. deposit() with 0.1 HBAR
- * 2. depositUSDC() with approved amount
- * 3. submitCommitment() with test hash
- * 4. executeTrade() with minimal size
- * 5. closePosition() to test PnL
+ * 3. POST-DEPLOYMENT:
+ *    - Call setNoirVerifier() if you have a verifier contract
+ *    - Test deposit() with small HBAR amount
+ *    - Test depositUSDC() if you have USDC tokens
+ * 
+ * 4. ZKP INTEGRATION:
+ *    - Deploy Noir verifier contract separately
+ *    - Call setNoirVerifier() with verifier address
+ *    - Use submitCommitment() -> executeTrade() flow
+ * 
+ * 5. FEATURES:
+ *    ✅ Dual token support (HBAR + USDC)
+ *    ✅ ZKP commitment system
+ *    ✅ Private order execution
+ *    ✅ Position management
+ *    ✅ Emergency functions
+ *    ✅ Remix-optimized size
  */

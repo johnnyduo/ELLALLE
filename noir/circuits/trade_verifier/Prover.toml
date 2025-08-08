@@ -1,0 +1,10 @@
+{
+  "trade_size": "50",
+  "is_long": true,
+  "pair_id": "0",
+  "trader_secret": "12345678901234567890123456789012",
+  "commitment": "0x1234567890abcdef1234567890abcdef12345678",
+  "trader_address": "0xa5346951a6d3faf19b96219cb12790a1db90fa0a",
+  "min_size": "1",
+  "max_size": "10000"
+}

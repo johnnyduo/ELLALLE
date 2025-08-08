@@ -395,7 +395,7 @@ export const InteractiveChart: React.FC<InteractiveChartProps> = ({
       </CardHeader>
 
       <CardContent>
-        <div className={`h-96 ${isPrivateMode ? 'relative' : ''}`}>
+        <div className={`h-96 min-h-[384px] ${isPrivateMode ? 'relative' : ''}`}>
           {/* Privacy Overlay */}
           {isPrivateMode && (
             <div className="absolute inset-0 bg-gradient-to-br from-purple-900/20 to-purple-600/10 backdrop-blur-sm z-10 rounded-lg border border-purple-500/30">
@@ -407,7 +407,7 @@ export const InteractiveChart: React.FC<InteractiveChartProps> = ({
             </div>
           )}
 
-          <ResponsiveContainer width="100%" height="100%">
+          <ResponsiveContainer width="100%" height="100%" minHeight={350}>
             {chartType === 'line' ? (
               <LineChart data={data}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
