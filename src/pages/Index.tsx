@@ -7,14 +7,15 @@ import TradingDashboard from '@/components/TradingDashboard';
 import { ZKPTradingInterface } from '@/components/ZKPTrading';
 import { Button } from '@/components/ui/button';
 import {
-    Brain,
-    Gamepad2,
-    Home,
-    Menu,
-    Shield,
-    TrendingUp,
-    Wallet,
-    X
+  Brain,
+  Gamepad2,
+  Home,
+  Menu,
+  Shield,
+  TrendingUp,
+  Wallet,
+  Wifi,
+  X
 } from 'lucide-react';
 import { useState } from 'react';
 
@@ -142,10 +143,11 @@ const Index = () => {
               <div className="glass rounded-lg p-4">
                 <div className="flex items-center space-x-2 mb-2">
                   <div className="status-online" />
-                  <span className="text-sm font-medium">System Online</span>
+                  <Wifi className="w-4 h-4 text-neon-green" />
+                  <span className="text-sm font-medium">Hedera Testnet</span>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  All systems operational
+                  Network Status
                 </p>
               </div>
             </div>

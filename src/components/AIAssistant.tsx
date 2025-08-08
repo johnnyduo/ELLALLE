@@ -311,8 +311,8 @@ export default function AIAssistant() {
       <div className="max-w-7xl mx-auto">
         {/* Fixed Header with Top-Right Controls */}
         <div className="mb-6 sm:mb-8 relative">
-          {/* Top Right Controls - Above Rainbow Cat */}
-          <div className="absolute top-0 right-6 z-30 flex flex-col items-end space-y-3">
+          {/* Top Right Controls - Above Rainbow Cat - Moved 50px Right */}
+          <div className="absolute top-0 z-30 flex flex-col items-end space-y-3" style={{ right: '-44px' }}>
             {/* Action Buttons */}
             <div className="flex items-center gap-2">
               <Button 
