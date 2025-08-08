@@ -526,7 +526,7 @@ export const PerpTradingInterface: React.FC<PerpTradingInterfaceProps> = ({
                           <Waves className="w-3.5 h-3.5 mr-1.5 text-neon-green" />
                           <span className="text-xs font-semibold text-emerald-300">Routing</span>
                         </div>
-                        <Badge className="bg-emerald-500/20 text-emerald-300 border-emerald-500/30 text-xs px-1.5 py-0.5">Hedera</Badge>
+                        <Badge className="bg-emerald-500/20 text-emerald-300 border-emerald-500/30 text-xs px-1.5 py-0.5">SaucerSwap</Badge>
                       </div>
                       <div className="space-y-1.5">
                         <div className="flex justify-between text-xs">
@@ -535,7 +535,7 @@ export const PerpTradingInterface: React.FC<PerpTradingInterfaceProps> = ({
                         </div>
                         <div className="flex justify-between text-xs">
                           <span className="text-emerald-200">Network</span>
-                          <span className="text-white font-mono">HCS</span>
+                          <span className="text-white font-mono">Hedera</span>
                         </div>
                         <div className="flex items-center">
                           <div className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse mr-1.5"></div>
@@ -1163,7 +1163,7 @@ export const PerpTradingInterface: React.FC<PerpTradingInterfaceProps> = ({
                           key={position.id}
                           className={`p-4 rounded-lg border ${
                             isPrivateMode ? 'bg-purple-500/5 border-purple-500/20' : 'bg-gray-500/5 border-gray-500/20'
-                          } ${isPrivateMode ? 'blur-sm hover:blur-none transition-all duration-300' : ''}`}
+                          }`}
                         >
                           <div className="flex items-center justify-between mb-3">
                             <div className="flex items-center space-x-2">

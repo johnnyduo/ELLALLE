@@ -240,68 +240,98 @@ export class ProductionZKPService {
         leverage: trade.leverage
       });
 
-      // Create reverse trade parameters (same commitment hash to close the position)
+      // Check pre-close balances
+      const preCloseBalances = await this.checkBalances(true);
+      console.log('💰 Pre-close balances:', preCloseBalances);
+
+      // Calculate expected collateral return (excluding fees since they were already deducted)
+      const originalCollateralAmount = parseFloat(trade.collateral.replace(/[^\d.-]/g, ''));
+      console.log(`💰 Expected collateral return: ${originalCollateralAmount} USDC`);
+
+      // Create reverse trade parameters to close the position
       const closeParams: TradeParams = {
         ...trade.tradeParams,
-        isLong: !trade.tradeParams.isLong, // Reverse the direction
-        size: trade.tradeParams.size, // Same size
-        leverage: trade.tradeParams.leverage, // Same leverage
+        isLong: !trade.tradeParams.isLong, // Reverse the direction to close
+        size: trade.tradeParams.size,
+        leverage: trade.tradeParams.leverage,
       };
 
       console.log('🔄 Executing reverse trade to close position:', closeParams);
 
-      // Execute the reverse trade to close position
+      // Execute the reverse trade using the same workflow that works
       const result = await this.executeCompleteZKPTrade(closeParams);
 
       if (result.success) {
-        // Calculate collateral to return to DarkPool balance
-        const originalCollateralAmount = parseFloat(trade.collateral.replace(/[^\d.-]/g, ''));
-        console.log(`💰 Returning ${originalCollateralAmount} USDC collateral to DarkPool balance`);
-
-        // Mark original trade as closed (keep same commitment hash)
+        console.log('✅ Reverse trade executed successfully');
+        
+        // Mark original trade as closed IMMEDIATELY
         trade.isActive = false;
         trade.status = 'completed';
         
-        // Save updated trade without changing the commitment
+        // Find and remove the reverse trade that was just created (it shouldn't be shown as active)
+        const reverseTradeIndex = this.completedTrades.findIndex(t => 
+          t.commitment === result.commitment && t.isActive && t.id !== trade.id
+        );
+        
+        if (reverseTradeIndex !== -1) {
+          console.log('🗑️ Removing reverse trade from active positions');
+          // Mark the reverse trade as inactive (it's just a closing mechanism)
+          this.completedTrades[reverseTradeIndex].isActive = false;
+          this.completedTrades[reverseTradeIndex].status = 'completed';
+        }
+
+        // Wait for balance update
+        await new Promise(resolve => setTimeout(resolve, 3000));
+        const postCloseBalances = await this.checkBalances(true);
+        console.log('💰 Post-close balances:', postCloseBalances);
+        
+        // Calculate actual balance change
+        const tokenUsed = trade.tradeParams.useHBAR ? 'hbar' : 'usdc';
+        const preBalance = parseFloat(preCloseBalances[tokenUsed]);
+        const postBalance = parseFloat(postCloseBalances[tokenUsed]);
+        const actualReturn = postBalance - preBalance;
+        
+        console.log('🔍 Collateral Return Analysis:');
+        console.log(`   Pre-close ${tokenUsed.toUpperCase()}:`, preBalance);
+        console.log(`   Post-close ${tokenUsed.toUpperCase()}:`, postBalance);
+        console.log(`   Actual return:`, actualReturn);
+        console.log(`   Expected return:`, originalCollateralAmount);
+        
+        if (Math.abs(actualReturn - originalCollateralAmount) > 0.001) {
+          console.warn('⚠️ Collateral return mismatch detected!');
+          console.warn(`   Expected: ${originalCollateralAmount} ${tokenUsed.toUpperCase()}`);
+          console.warn(`   Actual: ${actualReturn} ${tokenUsed.toUpperCase()}`);
+        } else {
+          console.log('✅ Collateral return verified successfully!');
+        }
+        
+        // Save updated trade immediately
         this.saveCompletedTrade(trade);
+        
+        // Force immediate localStorage sync
+        localStorage.setItem('zkp-completed-trades', JSON.stringify(this.completedTrades));
+        console.log('💾 Trade status updated - isActive: false, status: completed');
 
-        // Create close trade record (this will move to history)
-        const pairInfo = TRADING_PAIRS[closeParams.pairId] || TRADING_PAIRS[1];
-        const displaySymbol = closeParams.selectedSymbol || pairInfo.symbol;
-
-        const closeTrade: TradeHistoryItem = {
-          id: this.generateUniqueTradeId('zkp-close'),
-          timestamp: Date.now(),
-          asset: displaySymbol,
-          size: `${closeParams.size} ${pairInfo.baseAsset}`,
-          direction: closeParams.isLong ? 'Long' : 'Short',
-          leverage: `${closeParams.leverage}x`,
-          collateral: trade.collateral, // Keep original collateral amount
-          commitment: trade.commitment, // Keep original commitment hash, NOT "CLOSE-POSITION"
-          txHashes: {
-            commitment: result.commitmentTx || trade.txHashes.commitment,
-            trade: result.tradeTx || ''
-          },
-          status: 'completed',
-          pairId: closeParams.pairId,
-          isActive: false, // Close trades are not active positions
-          entryPrice: trade.entryPrice,
-          currentPrice: closeParams.currentPrice,
-          pnl: 0, // Calculate PnL based on price difference
-          tradeParams: closeParams
-        };
-
-        // Save close trade to history (this won't be an active position)
-        this.saveCompletedTrade(closeTrade);
-
-        // Trigger DarkPool balance refresh to reflect returned collateral
-        console.log('🔄 Triggering DarkPool balance refresh...');
+        // Trigger immediate UI refresh events
+        console.log('🔄 Triggering immediate UI refresh...');
+        
+        // Force trade history refresh with specific action
+        window.dispatchEvent(new CustomEvent('zkp-trade-update', {
+          detail: { action: 'close', tradeId: trade.id, timestamp: Date.now() }
+        }));
+        
+        // Trigger balance refresh
         window.dispatchEvent(new CustomEvent('darkpool-balance-refresh', {
           detail: { 
-            returnedCollateral: originalCollateralAmount,
-            currency: 'USDC',
+            returnedCollateral: actualReturn,
+            currency: tokenUsed.toUpperCase(),
             reason: 'Position Closed'
           }
+        }));
+        
+        // Add specific position update event for immediate UI refresh
+        window.dispatchEvent(new CustomEvent('zkp-position-closed', {
+          detail: { tradeId: trade.id, timestamp: Date.now() }
         }));
 
         // Force refresh ZKP balances
@@ -309,8 +339,8 @@ export class ProductionZKPService {
 
         return { 
           success: true, 
-          message: `Position closed successfully. ${originalCollateralAmount} USDC returned to DarkPool balance.`, 
-          txHash: result.tradeTx 
+          message: `Position closed successfully. ${actualReturn.toFixed(4)} ${tokenUsed.toUpperCase()} returned to DarkPool balance.`, 
+          txHash: result.tradeTx || ''
         };
       } else {
         return { 
@@ -318,11 +348,11 @@ export class ProductionZKPService {
           message: result.error || 'Failed to close position' 
         };
       }
-    } catch (error) {
-      console.error('❌ Error closing position:', error);
+    } catch (error: any) {
+      console.error('❌ Close position error:', error);
       return { 
         success: false, 
-        message: `Error closing position: ${error instanceof Error ? error.message : 'Unknown error'}` 
+        message: `Failed to close position: ${error.message}` 
       };
     }
   }
@@ -543,16 +573,21 @@ export class ProductionZKPService {
       const collateral = await this.calculateCollateral(commitmentData.requiredCollateral, params.useHBAR);
       console.log('💸 Expected collateral deduction:', collateral);
 
-      // Convert collateral to contract units (micro-units: 1 USDC = 1,000,000 micro-USDC)
-      const collateralInMicroUnits = Math.floor(commitmentData.requiredCollateral * 1000000);
-      console.log('🔢 Collateral in contract units:', collateralInMicroUnits, 'micro-USDC');
+      // The contract calculates collateral = size / 10, so to get the correct collateral deduction,
+      // we need to pass size = desired_collateral * 10
+      const desiredCollateralMicroUnits = Math.floor(parseFloat(collateral.total) * 1000000);
+      const requiredSizeForContract = desiredCollateralMicroUnits * 10;
+      console.log('🔢 Desired collateral deduction:', collateral.total, collateral.token);
+      console.log('🔢 Desired collateral in micro-units:', desiredCollateralMicroUnits);
+      console.log('🔢 Required size for contract (collateral * 10):', requiredSizeForContract, 'micro-USDC');
+      console.log('🔢 Contract will calculate collateral as:', Math.floor(requiredSizeForContract / 10), 'micro-USDC =', (requiredSizeForContract / 10 / 1000000).toFixed(2), 'USDC');
       console.log('🔢 WorkingSize for proof:', commitmentData.workingSize);
 
       const tx = await this.contract!.executeTrade(
         proof.proof,
         proof.publicInputs,
         commitmentData.commitment,
-        collateralInMicroUnits, // Use actual collateral amount instead of workingSize
+        requiredSizeForContract, // Use size that results in correct collateral deduction
         params.isLong,
         params.useHBAR,
         { gasLimit: 500000 }

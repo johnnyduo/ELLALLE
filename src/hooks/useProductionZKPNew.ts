@@ -197,11 +197,30 @@ export const useProductionZKP = () => {
       loadBalances(true);
       loadTradeHistory();
     };
+    
+    // Listen for trade update events (position close, etc.)
+    const handleTradeUpdate = (event: any) => {
+      console.log('🔄 Trade update event received:', event.detail);
+      loadTradeHistory();
+    };
+
+    // Listen for position closed events for immediate UI update
+    const handlePositionClosed = (event: any) => {
+      console.log('🔄 Position closed event received:', event.detail);
+      // Force immediate refresh of trade history
+      loadTradeHistory();
+      // Also refresh balances
+      loadBalances(true);
+    };
 
     window.addEventListener('zkp-balance-refresh', handleBalanceRefresh);
+    window.addEventListener('zkp-trade-update', handleTradeUpdate);
+    window.addEventListener('zkp-position-closed', handlePositionClosed);
 
     return () => {
       window.removeEventListener('zkp-balance-refresh', handleBalanceRefresh);
+      window.removeEventListener('zkp-trade-update', handleTradeUpdate);
+      window.removeEventListener('zkp-position-closed', handlePositionClosed);
     };
   }, [loadBalances, loadTradeHistory]);
 
