@@ -582,31 +582,31 @@ yarn optimize:gas
 
 ## 📈 Roadmap & Future Development
 
-### Phase 1: Core Protocol (Q1 2024) ✅
+### Phase 1: Core Protocol (Q3 2025) ✅
 - [x] Basic ZKP implementation
 - [x] Hedera integration
 - [x] Smart contract deployment
 - [x] Frontend MVP
 
-### Phase 2: Advanced Privacy (Q2 2024) ✅
+### Phase 2: Advanced Privacy (Q4 2025) ✅
 - [x] Ring signature integration
 - [x] Mixer protocol
 - [x] Anonymity set expansion
 - [x] Metadata protection
 
-### Phase 3: AI Enhancement (Q3 2024) 🔄
+### Phase 3: AI Enhancement (Q1 2026) 🔄
 - [x] Gemini AI integration
 - [x] Market analysis engine
 - [ ] Predictive modeling
 - [ ] Risk optimization
 
-### Phase 4: Institutional Features (Q4 2024) 📋
+### Phase 4: Institutional Features (Q2 2026) 📋
 - [ ] Multi-party computation
 - [ ] Institutional custody
 - [ ] Regulatory compliance
 - [ ] Cross-chain bridges
 
-### Phase 5: Decentralization (Q1 2025) 📋
+### Phase 5: Decentralization (Q3 2026) 📋
 - [ ] Governance token launch
 - [ ] DAO transition
 - [ ] Protocol upgrades
