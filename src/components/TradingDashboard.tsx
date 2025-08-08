@@ -9,6 +9,7 @@ import { useProductionZKP } from '@/hooks/useProductionZKPNew';
 import { useUSDCFaucet } from '@/hooks/useUSDCFaucet';
 import { useWallet } from '@/hooks/useWallet';
 import { formatBalance, formatPercentage, formatPrice } from '@/lib/web3';
+import Lottie from 'lottie-react';
 import { Activity, AlertTriangle, Brain, CheckCircle, Minus, Plus, RefreshCw, Shield, Target, Wallet } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
@@ -23,6 +24,7 @@ const TradingDashboard = () => {
   const [showWithdrawModal, setShowWithdrawModal] = useState(false);
   const [selectedDepositToken, setSelectedDepositToken] = useState<'HBAR' | 'USDC'>('HBAR');
   const [selectedWithdrawToken, setSelectedWithdrawToken] = useState<'HBAR' | 'USDC'>('HBAR');
+  const [lottieAnimationData, setLottieAnimationData] = useState(null);
   const [txStatus, setTxStatus] = useState<{
     type: 'deposit' | 'withdraw' | null;
     hash: string | null;
@@ -79,6 +81,20 @@ const TradingDashboard = () => {
     refreshBalances: refreshZKPBalances,
     isConnected: zkpConnected
   } = useProductionZKP();
+
+  // Load Lottie animation data
+  useEffect(() => {
+    const loadLottieData = async () => {
+      try {
+        const response = await fetch('/C4tlEer6dG.json');
+        const animationData = await response.json();
+        setLottieAnimationData(animationData);
+      } catch (error) {
+        console.error('Failed to load Lottie animation:', error);
+      }
+    };
+    loadLottieData();
+  }, []);
 
   // Auto-connect DarkPool when wallet connects
   useEffect(() => {
@@ -489,7 +505,7 @@ const TradingDashboard = () => {
         {/* Header with controls */}
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-bold gradient-text">Private Trading Dashboard</h1>
+                        <h1 className="text-3xl font-bold gradient-text">Private Trading Dashboard</h1>
             <p className="text-muted-foreground">
               Advanced perpetual DEX with privacy features
             </p>
@@ -611,29 +627,29 @@ const TradingDashboard = () => {
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                {/* Connection Status */}
-                <div className="space-y-2">
-                  <div className="text-sm text-muted-foreground">Connection</div>
-                  <div className="flex items-center space-x-2">
-                    {darkPoolConnected ? (
-                      <>
-                        <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
-                        <span className="text-green-400 font-medium">Connected</span>
-                      </>
+                {/* Lottie Cat Animation - DarkPool Guardian */}
+                <div className="flex flex-col items-center justify-center space-y-3 bg-gradient-to-br from-neon-purple/5 to-neon-blue/5 rounded-lg p-4">
+                  <div className="w-28 h-28 md:w-36 md:h-36">
+                    {lottieAnimationData ? (
+                      <Lottie
+                        animationData={lottieAnimationData}
+                        loop={true}
+                        autoplay={true}
+                        style={{ width: '100%', height: '100%' }}
+                      />
                     ) : (
-                      <>
-                        <div className="w-2 h-2 bg-red-400 rounded-full"></div>
-                        <span className="text-red-400 font-medium">Disconnected</span>
-                        <Button
-                          size="sm"
-                          onClick={connectDarkPool}
-                          className="ml-2 btn-hero text-xs"
-                          disabled={darkPoolLoading}
-                        >
-                          {darkPoolLoading ? 'Connecting...' : 'Connect'}
-                        </Button>
-                      </>
+                      <div className="w-full h-full bg-neon-purple/20 rounded-full flex items-center justify-center">
+                        <Shield className="w-12 h-12 text-neon-purple animate-pulse" />
+                      </div>
                     )}
+                  </div>
+                  <div className="text-center">
+                    <div className="text-sm font-medium text-neon-purple">ELLALLE Guardian</div>
+                    <div className="text-xs text-muted-foreground">Protecting your privacy</div>
+                    <div className="flex items-center justify-center mt-1 space-x-1">
+                      <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+                      <span className="text-xs text-green-400 font-medium">Active</span>
+                    </div>
                   </div>
                 </div>
 

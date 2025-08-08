@@ -24,7 +24,7 @@ const Index = () => {
 
   const navigation = [
     { id: 'hero', label: 'Home', icon: Home },
-    { id: 'trading', label: 'Trading', icon: TrendingUp },
+    { id: 'trading', label: 'Private Trading', icon: TrendingUp },
     // { id: 'zkp-trading', label: 'Private Trading', icon: Shield }, // Hidden for Series A MVP
     { id: 'portfolio', label: 'Portfolio', icon: Wallet },
     { id: 'ai', label: 'AI Assistant', icon: Brain },
