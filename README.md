@@ -22,17 +22,18 @@
 
 | Contract | Address | Purpose | Verification |
 |----------|---------|---------|--------------|
-| **DarkPool Core** | `0.0.4738523` | Main trading protocol | [✅ Verified](https://testnet.hashscan.io/contract/0.0.4738523) |
-| **PLONK Verifier** | `0.0.4738524` | ZKP proof verification | [✅ Verified](https://testnet.hashscan.io/contract/0.0.4738524) |
-| **USDC Token** | `0.0.4738525` | Test USDC implementation | [✅ Verified](https://testnet.hashscan.io/contract/0.0.4738525) |
-| **Position Manager** | `0.0.4738526` | Trading position handling | [✅ Verified](https://testnet.hashscan.io/contract/0.0.4738526) |
-| **Noir Verifier** | `0.0.4738527` | Advanced ZKP verification | [✅ Verified](https://testnet.hashscan.io/contract/0.0.4738527) |
-| **Oracle Aggregator** | `0.0.4738528` | Price feed management | [✅ Verified](https://testnet.hashscan.io/contract/0.0.4738528) |
+| **CompactDarkPoolDEX** | `0x7322b80Aa5398d53543930D966c6AE0e9EE2E54E` | Main USDC-enabled trading protocol | [✅ Verified](https://hashscan.io/testnet/contract/0x7322b80Aa5398d53543930D966c6AE0e9EE2E54E) |
+| **DarkPool Perpetual DEX** | `0xC4D7B5729A9Dca7dfcaCd1BB435bba3d0B559617` | Legacy trading contract | [✅ Verified](https://hashscan.io/testnet/contract/0xC4D7B5729A9Dca7dfcaCd1BB435bba3d0B559617) |
+| **Hedera DarkPool Manager** | `0xA04ea9A4184e8E8b05182338fF34e5DcB9b743e0` | Event-based management interface | [✅ Verified](https://hashscan.io/testnet/contract/0xA04ea9A4184e8E8b05182338fF34e5DcB9b743e0) |
+| **Simple DarkPool Manager** | `0xbFFfC841011586DA5613F07292ffAb9504793A97` | Legacy management (backward compatibility) | [✅ Verified](https://hashscan.io/testnet/contract/0xbFFfC841011586DA5613F07292ffAb9504793A97) |
+| **Noir Verifier** | `0x63F43eb598e7538E66d657b31F622232Bf5C018d` | Advanced ZKP verification | [✅ Verified](https://hashscan.io/testnet/contract/0x63F43eb598e7538E66d657b31F622232Bf5C018d) |
+| **Price Oracle** | `0xD2163E87d7fd20bc91e7B80D4D5AbcBad4Eb0888` | Price feed management | [✅ Verified](https://hashscan.io/testnet/contract/0xD2163E87d7fd20bc91e7B80D4D5AbcBad4Eb0888) |
+| **USDC Token** | `0x340e7949d378C6d6eB1cf7391F5C39b6c826BA9d` | Test USDC implementation | [✅ Verified](https://hashscan.io/testnet/contract/0x340e7949d378C6d6eB1cf7391F5C39b6c826BA9d) |
 
 **Network Details:**
 - **Chain ID:** 296 (Hedera Testnet)
 - **RPC Endpoint:** `https://testnet.hashio.io/api`
-- **Explorer:** [HashScan Testnet](https://testnet.hashscan.io/)
+- **Explorer:** [HashScan Testnet](https://hashscan.io/testnet/)
 - **Faucet:** [Hedera Portal](https://portal.hedera.com/register)
 
 ## 🎯 Abstract
