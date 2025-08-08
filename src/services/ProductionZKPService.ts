@@ -6,12 +6,32 @@
 import { COMPACT_DARKPOOL_ABI, CONTRACTS } from '@/contracts/NoirVerifier';
 import { BrowserProvider, Contract, formatEther, formatUnits, keccak256, solidityPacked, toBeHex, zeroPadValue } from 'ethers';
 
+// Trading pairs mapping for all 8 supported pairs
+export const TRADING_PAIRS = {
+  1: { symbol: 'BTC/USDC', baseAsset: 'BTC', quoteAsset: 'USDC' },
+  2: { symbol: 'ETH/USDC', baseAsset: 'ETH', quoteAsset: 'USDC' },
+  3: { symbol: 'SOL/USDC', baseAsset: 'SOL', quoteAsset: 'USDC' },
+  4: { symbol: 'AVAX/USDC', baseAsset: 'AVAX', quoteAsset: 'USDC' },
+  5: { symbol: 'HBAR/USDC', baseAsset: 'HBAR', quoteAsset: 'USDC' },
+  6: { symbol: 'ADA/USDC', baseAsset: 'ADA', quoteAsset: 'USDC' },
+  7: { symbol: 'DOT/USDC', baseAsset: 'DOT', quoteAsset: 'USDC' },
+  8: { symbol: 'MATIC/USDC', baseAsset: 'MATIC', quoteAsset: 'USDC' }
+} as const;
+
+// Helper function to get pairId from symbol
+export const getPairIdFromSymbol = (symbol: string): number => {
+  const pair = Object.entries(TRADING_PAIRS).find(([_, info]) => info.symbol === symbol);
+  return pair ? parseInt(pair[0]) : 1; // Default to BTC/USDC
+};
+
 export interface TradeParams {
   size: number;           // e.g., 0.01 for 0.01 BTC
   isLong: boolean;        // true = Long, false = Short
   leverage: number;       // e.g., 10 for 10x leverage
-  pairId: number;         // 1 = BTC/USD
+  pairId: number;         // 1-8 for different trading pairs
   useHBAR: boolean;       // true = HBAR collateral, false = USDC collateral
+  selectedSymbol?: string; // e.g., 'ETH/USDC' for UI display
+  currentPrice?: number;   // Current market price for accurate collateral calculation
 }
 
 export interface CommitmentData {
@@ -19,6 +39,7 @@ export interface CommitmentData {
   secret: string;         // Random secret
   workingSize: number;    // Scaled size (minimum 1,000,000)
   traderAddress: string;  // Wallet address
+  requiredCollateral: number; // Actual required collateral in USDC
 }
 
 export interface ZKProofData {
@@ -174,9 +195,10 @@ export class ProductionZKPService {
     const signer = await this.provider!.getSigner();
     const address = await signer.getAddress();
 
-    // Add small delay for balance refresh if requested
+    // Add longer delay for balance refresh if requested to ensure blockchain sync
     if (forceRefresh) {
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      console.log('⏳ Waiting for blockchain state synchronization...');
+      await new Promise(resolve => setTimeout(resolve, 4000)); // Increased from 2000ms
     }
 
     const [hbarBalance, usdcBalance, nativeBalance] = await Promise.all([
@@ -209,13 +231,27 @@ export class ProductionZKPService {
     const signer = await this.provider!.getSigner();
     const traderAddress = await signer.getAddress();
 
-    // Apply size scaling exactly as successful script
-    const scaledSize = Math.floor(params.size * 100000); // 0.01 * 100000 = 1000
-    const workingSize = Math.max(scaledSize, 1000000);   // Minimum 1,000,000 units
+    // Calculate notional value based on current market price and leverage
+    const currentPrice = params.currentPrice || 1.0; // Default to 1 if not provided
+    const notionalValue = params.size * currentPrice; // e.g., 1 SOL × $176.67 = $176.67
+    const requiredCollateral = notionalValue / params.leverage; // e.g., $176.67 ÷ 10 = $17.67
 
     console.log('Size scaling:');
-    console.log('  Input:', params.size, 'BTC');
-    console.log('  Working size:', workingSize, 'units');
+    console.log('  Pair:', TRADING_PAIRS[params.pairId]?.symbol || 'Unknown');
+    console.log('  Input:', params.size, TRADING_PAIRS[params.pairId]?.baseAsset || 'tokens');
+    console.log('  Current Price:', currentPrice, 'USDC');
+    console.log('  Notional Value:', notionalValue.toFixed(2), 'USDC');
+    console.log('  Direction:', params.isLong ? 'Long' : 'Short');
+    console.log('  Leverage:', params.leverage + 'x');
+    console.log('  Required Collateral:', requiredCollateral.toFixed(2), 'USDC');
+
+    // Convert to working size for contract (scale to micro units but preserve collateral value)
+    // We still need workingSize for contract, but collateral should be based on actual value
+    const scaledSize = Math.floor(params.size * 100000); // Keep for contract compatibility
+    const workingSize = Math.max(scaledSize, 1000000);   // Minimum 1,000,000 units
+    
+    console.log('  Scaled Size:', scaledSize);
+    console.log('  Working Size:', workingSize);
 
     // Generate random secret
     const secret = Math.floor(Math.random() * 1000000000000).toString();
@@ -234,41 +270,42 @@ export class ProductionZKPService {
       commitment,
       secret,
       workingSize,
-      traderAddress
+      traderAddress,
+      requiredCollateral
     };
   }
 
   /**
-   * Calculate collateral requirements
+   * Calculate collateral requirements based on actual notional value and leverage
    */
-  async calculateCollateral(workingSize: number, useHBAR: boolean): Promise<CollateralRequirements> {
+  async calculateCollateral(requiredCollateral: number, useHBAR: boolean): Promise<CollateralRequirements> {
     const balances = await this.checkBalances();
 
     if (useHBAR) {
-      // HBAR collateral calculation
-      const collateralHbar = BigInt(workingSize) / BigInt(100000000); // Convert to HBAR units
-      const feeHbar = (collateralHbar * BigInt(20)) / BigInt(10000);  // 20 basis points
+      // HBAR collateral calculation based on actual required amount
+      const collateralHbar = requiredCollateral; // Direct conversion to HBAR (1:1 for simplicity)
+      const feeHbar = (collateralHbar * 20) / 10000;  // 20 basis points (0.2%)
       const totalHbar = collateralHbar + feeHbar;
 
       return {
-        collateral: (Number(collateralHbar) / 1e8).toFixed(8),
-        fee: (Number(feeHbar) / 1e8).toFixed(8),
-        total: (Number(totalHbar) / 1e8).toFixed(8),
+        collateral: collateralHbar.toFixed(8),
+        fee: feeHbar.toFixed(8),
+        total: totalHbar.toFixed(8),
         token: 'HBAR',
-        sufficient: parseFloat(balances.hbar) >= (Number(totalHbar) / 1e8)
+        sufficient: parseFloat(balances.hbar) >= totalHbar
       };
     } else {
-      // USDC collateral calculation  
-      const collateralUsdc = BigInt(workingSize) / BigInt(10);       // USDC collateral
-      const feeUsdc = (collateralUsdc * BigInt(20)) / BigInt(10000); // 20 basis points
+      // USDC collateral calculation based on actual required amount
+      const collateralUsdc = requiredCollateral; // Actual collateral needed in USDC
+      const feeUsdc = (collateralUsdc * 20) / 10000; // 20 basis points (0.2%)
       const totalUsdc = collateralUsdc + feeUsdc;
 
       return {
-        collateral: formatUnits(collateralUsdc, 6),
-        fee: formatUnits(feeUsdc, 6),
-        total: formatUnits(totalUsdc, 6),
+        collateral: collateralUsdc.toFixed(2),
+        fee: feeUsdc.toFixed(2),
+        total: totalUsdc.toFixed(2),
         token: 'USDC',
-        sufficient: parseFloat(balances.usdc) >= parseFloat(formatUnits(totalUsdc, 6))
+        sufficient: parseFloat(balances.usdc) >= totalUsdc
       };
     }
   }
@@ -336,7 +373,7 @@ export class ProductionZKPService {
   }
 
   /**
-   * Execute trade (Step 4) - Final step
+   * Execute trade (Step 4) - Final step with balance tracking
    */
   async executeTrade(
     proof: ZKProofData,
@@ -350,6 +387,14 @@ export class ProductionZKPService {
     }
 
     try {
+      // Check balance before trade execution
+      const preTradeBalances = await this.checkBalances(false);
+      console.log('💰 Pre-trade balances:', preTradeBalances);
+
+      // Calculate expected collateral deduction based on actual required amount
+      const collateral = await this.calculateCollateral(commitmentData.requiredCollateral, params.useHBAR);
+      console.log('💸 Expected collateral deduction:', collateral);
+
       const tx = await this.contract!.executeTrade(
         proof.proof,
         proof.publicInputs,
@@ -366,6 +411,32 @@ export class ProductionZKPService {
       
       if (receipt.status === 1) {
         console.log('✅ Trade executed successfully!');
+        
+        // Check balance immediately after trade execution
+        await new Promise(resolve => setTimeout(resolve, 3000)); // Wait 3 seconds
+        const postTradeBalances = await this.checkBalances(true);
+        console.log('💰 Post-trade balances:', postTradeBalances);
+        
+        // Calculate actual balance change
+        const tokenUsed = params.useHBAR ? 'hbar' : 'usdc';
+        const preBalance = parseFloat(preTradeBalances[tokenUsed]);
+        const postBalance = parseFloat(postTradeBalances[tokenUsed]);
+        const actualDeduction = preBalance - postBalance;
+        
+        console.log('🔍 Balance Analysis:');
+        console.log(`   Pre-trade ${tokenUsed.toUpperCase()}:`, preBalance);
+        console.log(`   Post-trade ${tokenUsed.toUpperCase()}:`, postBalance);
+        console.log(`   Actual deduction:`, actualDeduction);
+        console.log(`   Expected deduction:`, parseFloat(collateral.total));
+        
+        if (Math.abs(actualDeduction - parseFloat(collateral.total)) > 0.001) {
+          console.warn('⚠️ Balance deduction mismatch detected!');
+          console.warn(`   Expected: ${collateral.total} ${collateral.token}`);
+          console.warn(`   Actual: ${actualDeduction} ${tokenUsed.toUpperCase()}`);
+        } else {
+          console.log('✅ Balance deduction verified successfully!');
+        }
+        
         return tx.hash;
       } else {
         throw new Error('Trade transaction failed');
@@ -386,8 +457,8 @@ export class ProductionZKPService {
       // Step 1: Generate commitment
       const commitmentData = await this.generateCommitment(params);
 
-      // Step 2: Calculate collateral requirements
-      const collateral = await this.calculateCollateral(commitmentData.workingSize, params.useHBAR);
+      // Step 2: Calculate collateral requirements based on actual required amount
+      const collateral = await this.calculateCollateral(commitmentData.requiredCollateral, params.useHBAR);
       
       if (!collateral.sufficient) {
         return {
@@ -408,15 +479,19 @@ export class ProductionZKPService {
 
       console.log('🎉 ZKP trade completed successfully!');
 
+      // Get dynamic trading pair info
+      const pairInfo = TRADING_PAIRS[params.pairId] || TRADING_PAIRS[1]; // Default to BTC if not found
+      const displaySymbol = params.selectedSymbol || pairInfo.symbol;
+
       // Create trade history item for the completed trade
       const completedTrade: TradeHistoryItem = {
         id: `zkp-trade-${Date.now()}`,
         timestamp: Date.now(),
-        asset: 'BTC/USD',
-        size: `${params.size} BTC`,
+        asset: displaySymbol,
+        size: `${params.size} ${pairInfo.baseAsset}`,
         direction: params.isLong ? 'Long' : 'Short',
         leverage: `${params.leverage}x`,
-        collateral: `${(commitmentData.workingSize * 0.00001016667).toFixed(2)} ${params.useHBAR ? 'HBAR' : 'USDC'}`,
+        collateral: `${commitmentData.requiredCollateral.toFixed(2)} ${params.useHBAR ? 'HBAR' : 'USDC'}`,
         commitment: commitmentData.commitment,
         txHashes: {
           commitment: commitmentTx,

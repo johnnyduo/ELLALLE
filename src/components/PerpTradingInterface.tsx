@@ -8,11 +8,12 @@ import { ZKPTradesHistory } from '@/components/ZKPTradesHistory';
 import { useProductionZKP } from '@/hooks/useProductionZKPNew';
 import { usePythOracle } from '@/hooks/zkp/usePythOracle';
 import { CONTRACT_CONFIG } from '@/lib/env';
-import { TradeParams } from '@/services/ProductionZKPService';
+import { getPairIdFromSymbol, TradeParams } from '@/services/ProductionZKPService';
 import {
   AlertTriangle,
   CheckCircle,
   Clock,
+  Copy,
   Eye,
   EyeOff,
   Lock,
@@ -76,6 +77,12 @@ export const PerpTradingInterface: React.FC<PerpTradingInterfaceProps> = ({
   const [leverage, setLeverage] = useState(10);
   const [positions, setPositions] = useState<Position[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
+  const [collateralInfo, setCollateralInfo] = useState<{
+    collateral: string;
+    fee: string;
+    total: string;
+    sufficient: boolean;
+  } | null>(null);
 
   // Production ZKP Integration
   const {
@@ -88,6 +95,7 @@ export const PerpTradingInterface: React.FC<PerpTradingInterfaceProps> = ({
     loadTradeHistory,
     clearError,
     refreshBalances,
+    forceRefreshBalances,
     canTrade,
     isConnected
   } = useProductionZKP();
@@ -95,42 +103,91 @@ export const PerpTradingInterface: React.FC<PerpTradingInterfaceProps> = ({
   // Pyth Oracle integration for real-time prices
   const { prices } = usePythOracle();
 
-  // Mock positions for demo
+    // Mock positions for demo
   useEffect(() => {
     setPositions([
       {
         id: '1',
-        symbol: 'BTC/USD',
+        symbol: 'BTC-USD',
         side: 'long',
         size: 0.5,
-        entryPrice: 42500,
+        entryPrice: 42150,
         markPrice: currentPrice,
-        pnl: (currentPrice - 42500) * 0.5,
-        pnlPercent: ((currentPrice - 42500) / 42500) * 100,
+        pnl: (currentPrice - 42150) * 0.5,
+        pnlPercent: ((currentPrice - 42150) / 42150) * 100,
         margin: 2125,
         leverage: 10,
-        liquidationPrice: 38250,
+        liquidationPrice: 3794,
       },
       {
         id: '2',
-        symbol: 'ETH/USD',
+        symbol: 'ETH-USD',
         side: 'short',
         size: 2.0,
-        entryPrice: 2600,
-        markPrice: 2580,
-        pnl: (2600 - 2580) * 2.0,
-        pnlPercent: ((2600 - 2580) / 2600) * 100,
+        entryPrice: 2650,
+        markPrice: 2600,
+        pnl: (2650 - 2600) * 2.0,
+        pnlPercent: ((2650 - 2600) / 2650) * 100,
         margin: 520,
-        leverage: 10,
+        leverage: 8,
         liquidationPrice: 2860,
       }
     ]);
   }, [currentPrice]);
 
+  // Calculate ZKP collateral when order size, leverage, or balances change
+  useEffect(() => {
+    if (orderSize && zkpBalances) {
+      calculateZKPCollateral();
+    }
+  }, [orderSize, leverage, zkpBalances]);
+
   const calculateMargin = () => {
     const size = parseFloat(orderSize) || 0;
     const price = orderType === 'market' ? currentPrice : parseFloat(orderPrice) || currentPrice;
     return (size * price) / leverage;
+  };
+
+  // Calculate actual ZKP collateral requirements based on notional value and leverage
+  const calculateZKPCollateral = async () => {
+    const size = parseFloat(orderSize) || 0;
+    if (size <= 0) {
+      setCollateralInfo(null);
+      return;
+    }
+
+    try {
+      // Calculate based on actual notional value and leverage (CORRECT METHOD)
+      const notionalValue = size * currentPrice; // e.g., 1 SOL × $176.67 = $176.67 USDC
+      const requiredCollateral = notionalValue / leverage; // e.g., $176.67 ÷ 10 = $17.67 USDC
+      const tradingFee = (requiredCollateral * 20) / 10000; // 20 basis points (0.2%)
+      const totalRequired = requiredCollateral + tradingFee;
+
+      console.log('🧮 ZKP Collateral Calculation:');
+      console.log(`   Pair: ${selectedSymbol}`);
+      console.log(`   Size: ${size} ${selectedSymbol.split('/')[0]}`);
+      console.log(`   Current Price: $${currentPrice} USDC`);
+      console.log(`   Notional Value: $${notionalValue.toFixed(2)} USDC`);
+      console.log(`   Leverage: ${leverage}x`);
+      console.log(`   Required Collateral: $${requiredCollateral.toFixed(2)} USDC`);
+      console.log(`   Trading Fee (0.2%): $${tradingFee.toFixed(2)} USDC`);
+      console.log(`   Total Required: $${totalRequired.toFixed(2)} USDC`);
+
+      // Check if user has sufficient balance
+      const userBalance = zkpBalances ? parseFloat(zkpBalances.usdc) : 0;
+      const sufficient = userBalance >= totalRequired;
+
+      setCollateralInfo({
+        collateral: requiredCollateral.toFixed(2),
+        fee: tradingFee.toFixed(2),
+        total: totalRequired.toFixed(2),
+        sufficient
+      });
+
+    } catch (error) {
+      console.error('❌ Error calculating ZKP collateral:', error);
+      setCollateralInfo(null);
+    }
   };
 
   const calculateNotionalValue = () => {
@@ -152,9 +209,15 @@ export const PerpTradingInterface: React.FC<PerpTradingInterfaceProps> = ({
   };
 
   const canAffordOrder = () => {
-    const totalCost = calculateTotalCost();
-    const availableUSDC = parseFloat(usdcBalance) || 0;
-    return totalCost <= availableUSDC;
+    if (isPrivateMode && collateralInfo) {
+      // Use ZKP collateral calculation for private mode
+      return collateralInfo.sufficient;
+    } else {
+      // Use standard calculation for regular mode
+      const totalCost = calculateTotalCost();
+      const availableUSDC = parseFloat(usdcBalance) || 0;
+      return totalCost <= availableUSDC;
+    }
   };
 
   const calculateLiquidationPrice = () => {
@@ -191,13 +254,18 @@ export const PerpTradingInterface: React.FC<PerpTradingInterfaceProps> = ({
         // ZKP Private Trading with proven workflow
         toast.info('🔐 Starting zero-knowledge proof trade execution...');
         
-        // Prepare trade parameters exactly as successful script
+        // Get dynamic pairId based on selected trading pair
+        const pairId = getPairIdFromSymbol(selectedSymbol);
+        
+        // Prepare trade parameters with dynamic pair support and current price
         const tradeParams: TradeParams = {
-          size: parseFloat(orderSize),     // e.g., 0.01 for 0.01 BTC
+          size: parseFloat(orderSize),     // e.g., 0.01 for 0.01 tokens
           isLong: orderSide === 'buy',     // true = Long, false = Short
           leverage,                        // e.g., 10 for 10x leverage
-          pairId: 1,                       // 1 = BTC/USD (as in successful script)
-          useHBAR: false                   // Use USDC collateral (as successful script)
+          pairId,                          // Dynamic pairId based on selected symbol
+          useHBAR: false,                  // Use USDC collateral (as successful script)
+          selectedSymbol,                  // Pass the selected symbol for display
+          currentPrice                     // Current market price for accurate collateral calculation
         };
 
         console.log('🚀 Executing ZKP trade with params:', tradeParams);
@@ -209,10 +277,19 @@ export const PerpTradingInterface: React.FC<PerpTradingInterfaceProps> = ({
           setOrderSize('');
           setOrderPrice('');
           
+          // Automatically switch to ZKP Trades tab to show the new trade
+          setActiveTab('zkp-trades');
+          
           toast.success('🎉 ZKP trade executed successfully!');
+          
+          // Force immediate balance refresh to show deduction
+          console.log('🔄 Triggering immediate balance refresh...');
+          forceRefreshBalances();
           
           // Log transaction details for user
           console.log('Trade completed:', {
+            pair: selectedSymbol,
+            pairId,
             commitment: result.commitmentTx,
             execution: result.tradeTx,
             hashscan: [
@@ -358,11 +435,11 @@ export const PerpTradingInterface: React.FC<PerpTradingInterfaceProps> = ({
         </CardHeader>
       </Card>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 md:gap-6">
         {/* Trading Panel */}
-        <div className="lg:col-span-1">
+        <div className="xl:col-span-1">
           <Card className="card-glass">
-            <CardHeader>
+            <CardHeader className="pb-4">
               <CardTitle className="text-lg">Place Order</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -627,10 +704,10 @@ export const PerpTradingInterface: React.FC<PerpTradingInterfaceProps> = ({
                     )}
                   </div>
                   
-                  <div className="space-y-2 text-sm">
-                    <div className="flex justify-between">
+                  <div className="space-y-3 text-sm">
+                    <div className="flex justify-between items-center">
                       <span className="text-muted-foreground">Entry Price:</span>
-                      <span className="font-medium">
+                      <span className="font-medium text-right">
                         {orderType === 'market' ? 
                           `$${currentPrice.toLocaleString(undefined, { minimumFractionDigits: 2 })} (Market)` :
                           `$${parseFloat(orderPrice || '0').toLocaleString(undefined, { minimumFractionDigits: 2 })} (Limit)`
@@ -638,85 +715,141 @@ export const PerpTradingInterface: React.FC<PerpTradingInterfaceProps> = ({
                       </span>
                     </div>
                     
-                    <div className="flex justify-between">
+                    <div className="flex justify-between items-center">
                       <span className="text-muted-foreground">Position Size:</span>
-                      <span className="font-medium">{orderSize} {selectedSymbol.split('/')[0]}</span>
+                      <span className="font-medium text-right">{orderSize} {selectedSymbol.split('/')[0]}</span>
                     </div>
                     
-                    <div className="flex justify-between">
+                    <div className="flex justify-between items-center">
                       <span className="text-muted-foreground">Notional Value:</span>
-                      <span className="font-medium">${calculateNotionalValue().toLocaleString(undefined, { minimumFractionDigits: 2 })} USDC</span>
+                      <span className="font-medium text-right">${calculateNotionalValue().toLocaleString(undefined, { minimumFractionDigits: 2 })} USDC</span>
                     </div>
                     
-                    <div className="flex justify-between">
+                    <div className="flex justify-between items-center">
                       <span className="text-muted-foreground">Leverage:</span>
-                      <span className="font-medium text-yellow-400">{leverage}x</span>
+                      <span className="font-medium text-yellow-400 text-right">{leverage}x</span>
                     </div>
                     
                     {isPrivateMode && (
-                      <div className="border border-purple-500/30 rounded p-2 bg-purple-500/5">
-                        <div className="text-xs font-medium text-purple-300 mb-1">🔐 Privacy Features</div>
-                        <div className="space-y-1 text-xs text-muted-foreground">
-                          <div className="flex justify-between">
+                      <div className="border border-purple-500/30 rounded-lg p-3 bg-purple-500/5">
+                        <div className="text-xs font-medium text-purple-300 mb-2 flex items-center">
+                          <Shield className="w-3 h-3 mr-1" />
+                          Privacy Features
+                        </div>
+                        <div className="space-y-2 text-xs text-muted-foreground">
+                          <div className="flex justify-between items-center">
                             <span>Trade Size:</span>
-                            <span className="text-purple-400">Hidden via ZK proof</span>
+                            <span className="text-purple-400 text-right">Hidden via ZK proof</span>
                           </div>
-                          <div className="flex justify-between">
+                          <div className="flex justify-between items-center">
                             <span>Direction:</span>
-                            <span className="text-purple-400">Encrypted commitment</span>
+                            <span className="text-purple-400 text-right">Encrypted commitment</span>
                           </div>
-                          <div className="flex justify-between">
+                          <div className="flex justify-between items-center">
                             <span>Leverage:</span>
-                            <span className="text-purple-400">ZK verified: {leverage}x</span>
+                            <span className="text-purple-400 text-right">ZK verified: {leverage}x</span>
                           </div>
-                          <div className="flex justify-between">
+                          <div className="flex justify-between items-center">
                             <span>Trader Identity:</span>
-                            <span className="text-purple-400">Anonymous</span>
+                            <span className="text-purple-400 text-right">Anonymous</span>
                           </div>
                         </div>
                       </div>
                     )}
                     
-                    <div className="border-t border-purple-500/20 pt-2 mt-2">
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">Margin Required:</span>
-                        <span className="font-medium">${calculateMargin().toLocaleString(undefined, { minimumFractionDigits: 2 })} USDC</span>
-                      </div>
+                    <div className="border-t border-purple-500/20 pt-3 mt-3 space-y-3">
+                      {isPrivateMode ? (
+                        collateralInfo ? (
+                          // ZKP Collateral Information
+                          <>
+                            <div className="flex justify-between items-center">
+                              <span className="text-muted-foreground">ZKP Collateral:</span>
+                              <span className="font-medium text-neon-blue text-right">${collateralInfo.collateral} USDC</span>
+                            </div>
+                            
+                            <div className="flex justify-between items-center">
+                              <span className="text-muted-foreground">Trading Fee (0.2%):</span>
+                              <span className="font-medium text-right">${collateralInfo.fee} USDC</span>
+                            </div>
+                            
+                            <div className="flex justify-between items-center">
+                              <span className="text-muted-foreground font-medium">Total Required:</span>
+                              <span className={`font-medium text-right ${collateralInfo.sufficient ? 'text-green-400' : 'text-red-400'}`}>
+                                ${collateralInfo.total} USDC
+                              </span>
+                            </div>
+                            
+                            {!collateralInfo.sufficient && (
+                              <div className="mt-2 p-2 bg-red-500/10 border border-red-500/20 rounded-lg text-xs text-red-300">
+                                <div className="flex items-center">
+                                  <AlertTriangle className="w-3 h-3 mr-1 flex-shrink-0" />
+                                  <span>Insufficient USDC balance in DarkPool</span>
+                                </div>
+                              </div>
+                            )}
+                            
+                            <div className="mt-2 p-2 bg-purple-500/10 border border-purple-500/20 rounded-lg text-xs text-purple-300">
+                              <div className="flex items-start">
+                                <Shield className="w-3 h-3 mr-1 mt-0.5 flex-shrink-0" />
+                                <span>ZKP collateral calculated from working size (min 1M units)</span>
+                              </div>
+                            </div>
+                          </>
+                        ) : (
+                          // Loading or no order size
+                          <div className="flex justify-between items-center">
+                            <span className="text-muted-foreground">ZKP Collateral:</span>
+                            <span className="font-medium text-gray-400 text-right">
+                              {orderSize ? 'Calculating...' : 'Enter order size'}
+                            </span>
+                          </div>
+                        )
+                      ) : (
+                        // Standard Margin Display
+                        <>
+                          <div className="flex justify-between items-center">
+                            <span className="text-muted-foreground">Margin Required:</span>
+                            <span className="font-medium text-right">${calculateMargin().toLocaleString(undefined, { minimumFractionDigits: 2 })} USDC</span>
+                          </div>
+                        </>
+                      )}
                       
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">Trading Fees (0.1%):</span>
-                        <span className="font-medium">${calculateFees().toLocaleString(undefined, { minimumFractionDigits: 4 })} USDC</span>
-                      </div>
-                      
-                      {isPrivateMode && (
-                        <div className="flex justify-between">
-                          <span className="text-muted-foreground">ZK Proof Gas:</span>
-                          <span className="font-medium text-purple-400">~$0.50 USDC</span>
+                      {!isPrivateMode && (
+                        <div className="flex justify-between items-center">
+                          <span className="text-muted-foreground">Trading Fees (0.1%):</span>
+                          <span className="font-medium text-right">${calculateFees().toLocaleString(undefined, { minimumFractionDigits: 4 })} USDC</span>
                         </div>
                       )}
                       
-                      <div className="flex justify-between font-medium text-base pt-1 border-t border-purple-500/20 mt-1">
+                      {isPrivateMode && (
+                        <div className="flex justify-between items-center">
+                          <span className="text-muted-foreground">ZK Proof Gas:</span>
+                          <span className="font-medium text-purple-400 text-right">~$0.50 USDC</span>
+                        </div>
+                      )}
+                      
+                      <div className="flex justify-between items-center font-medium text-base pt-2 border-t border-purple-500/20 mt-2">
                         <span>Total Cost:</span>
-                        <span className={canAffordOrder() ? 'text-green-400' : 'text-red-400'}>
+                        <span className={`text-right ${canAffordOrder() ? 'text-green-400' : 'text-red-400'}`}>
                           ${(calculateTotalCost() + (isPrivateMode ? 0.5 : 0)).toLocaleString(undefined, { minimumFractionDigits: 2 })} USDC
                         </span>
                       </div>
                     </div>
                     
-                    <div className="border-t border-purple-500/20 pt-2 mt-2">
-                      <div className="flex justify-between">
+                    <div className="border-t border-purple-500/20 pt-3 mt-3 space-y-3">
+                      <div className="flex justify-between items-center">
                         <span className="text-muted-foreground">Liquidation Price:</span>
-                        <span className="text-red-400 font-medium">${calculateLiquidationPrice().toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                        <span className="text-red-400 font-medium text-right">${calculateLiquidationPrice().toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
                       </div>
                       
-                      <div className="flex justify-between">
+                      <div className="flex justify-between items-center">
                         <span className="text-muted-foreground">Available USDC:</span>
-                        <span className="font-medium">${parseFloat(usdcBalance).toLocaleString(undefined, { minimumFractionDigits: 2 })} USDC</span>
+                        <span className="font-medium text-right">${parseFloat(usdcBalance).toLocaleString(undefined, { minimumFractionDigits: 2 })} USDC</span>
                       </div>
                       
                       {!canAffordOrder() && orderSize && (
-                        <div className="flex items-center space-x-1 text-red-400 text-xs mt-1">
-                          <AlertTriangle className="w-3 h-3" />
+                        <div className="flex items-center space-x-2 text-red-400 text-xs p-2 bg-red-500/10 border border-red-500/20 rounded-lg">
+                          <AlertTriangle className="w-3 h-3 flex-shrink-0" />
                           <span>Insufficient USDC balance</span>
                         </div>
                       )}
@@ -727,22 +860,36 @@ export const PerpTradingInterface: React.FC<PerpTradingInterfaceProps> = ({
 
               {/* ZKP Status Indicator */}
               {isPrivateMode && (
-                <div className="p-3 rounded-lg bg-purple-500/10 border border-purple-500/20">
-                  <div className="flex items-center justify-between text-sm">
+                <div className="p-4 rounded-lg bg-purple-500/10 border border-purple-500/20">
+                  <div className="flex items-center justify-between text-sm mb-2">
                     <div className="flex items-center space-x-2">
                       <Shield className="w-4 h-4 text-purple-400" />
-                      <span className="text-purple-300">ZK Verifier Connected</span>
+                      <span className="text-purple-300 font-medium">ZK Verifier Connected</span>
                     </div>
                     <Badge variant="outline" className="bg-green-500/20 text-green-300 border-green-500/50 text-xs">
                       <CheckCircle className="w-3 h-3 mr-1" />
                       Active
                     </Badge>
                   </div>
-                  <div className="text-xs text-muted-foreground mt-1">
-                    Contract: <code className="bg-purple-500/20 px-1 rounded">{CONTRACT_CONFIG.noirVerifier}</code>
+                  <div className="text-xs text-muted-foreground">
+                    <div className="flex items-center space-x-2">
+                      <span>Contract:</span>
+                      <code className="bg-purple-500/20 px-2 py-1 rounded text-xs font-mono break-all overflow-hidden">
+                        {CONTRACT_CONFIG.noirVerifier.slice(0, 6)}...{CONTRACT_CONFIG.noirVerifier.slice(-4)}
+                      </code>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-5 w-5 p-0 text-purple-400 hover:text-purple-300"
+                        onClick={() => navigator.clipboard.writeText(CONTRACT_CONFIG.noirVerifier)}
+                        title="Copy full address"
+                      >
+                        <Copy className="w-3 h-3" />
+                      </Button>
+                    </div>
                   </div>
                   {zkpLoading && (
-                    <div className="text-xs text-blue-300 mt-1 flex items-center">
+                    <div className="text-xs text-blue-300 mt-2 flex items-center">
                       <Clock className="w-3 h-3 mr-1" />
                       Processing ZK proof...
                     </div>
@@ -759,9 +906,9 @@ export const PerpTradingInterface: React.FC<PerpTradingInterfaceProps> = ({
                   zkpLoading ||
                   !canAffordOrder()
                 }
-                className={`w-full ${orderSide === 'buy' ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'} ${
+                className={`w-full h-12 text-base font-medium ${orderSide === 'buy' ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'} ${
                   !canAffordOrder() ? 'opacity-50 cursor-not-allowed' : ''
-                } ${isPrivateMode ? 'border border-purple-500/50' : ''}`}
+                } ${isPrivateMode ? 'border border-purple-500/50' : ''} transition-all duration-200`}
               >
                 {zkpLoading ? (
                   <>
@@ -787,12 +934,12 @@ export const PerpTradingInterface: React.FC<PerpTradingInterfaceProps> = ({
 
               {/* ZKP Process Information */}
               {isPrivateMode && (
-                <div className="text-xs text-muted-foreground space-y-1">
+                <div className="text-xs text-muted-foreground space-y-2 bg-purple-500/5 border border-purple-500/20 rounded-lg p-3">
                   <div className="flex items-center justify-center space-x-2">
                     <div className="w-2 h-2 rounded-full bg-purple-500"></div>
                     <span>Your trade details remain completely private</span>
                   </div>
-                  <div className="text-center">
+                  <div className="text-center text-purple-300">
                     ZK proof will be generated locally and verified on-chain
                   </div>
                 </div>
@@ -802,13 +949,13 @@ export const PerpTradingInterface: React.FC<PerpTradingInterfaceProps> = ({
         </div>
 
         {/* Positions & Orders */}
-        <div className="lg:col-span-2">
+        <div className="xl:col-span-2">
           <Tabs value={activeTab} onValueChange={setActiveTab}>
             <TabsList className="grid w-full grid-cols-4">
-              <TabsTrigger value="positions">Positions</TabsTrigger>
-              <TabsTrigger value="orders">Orders</TabsTrigger>
-              <TabsTrigger value="zkp">ZKP Trades</TabsTrigger>
-              <TabsTrigger value="history">History</TabsTrigger>
+              <TabsTrigger value="positions" className="text-xs sm:text-sm">Positions</TabsTrigger>
+              <TabsTrigger value="orders" className="text-xs sm:text-sm">Orders</TabsTrigger>
+              <TabsTrigger value="zkp" className="text-xs sm:text-sm">ZKP Trades</TabsTrigger>
+              <TabsTrigger value="history" className="text-xs sm:text-sm">History</TabsTrigger>
             </TabsList>
 
             <TabsContent value="positions" className="mt-4">
@@ -822,51 +969,58 @@ export const PerpTradingInterface: React.FC<PerpTradingInterfaceProps> = ({
                       No open positions
                     </div>
                   ) : (
-                    <div className="space-y-3">
+                    <div className="space-y-4">
                       {positions.map((position) => (
                         <div
                           key={position.id}
                           className={`p-4 rounded-lg border ${
                             isPrivateMode ? 'bg-purple-500/5 border-purple-500/20' : 'bg-gray-500/5 border-gray-500/20'
-                          } ${isPrivateMode ? 'blur-sm hover:blur-none transition-all' : ''}`}
+                          } ${isPrivateMode ? 'blur-sm hover:blur-none transition-all duration-300' : ''}`}
                         >
-                          <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center justify-between mb-3">
                             <div className="flex items-center space-x-2">
-                              <Badge variant={position.side === 'long' ? 'default' : 'destructive'}>
+                              <Badge variant={position.side === 'long' ? 'default' : 'destructive'} className="text-xs">
                                 {position.side.toUpperCase()}
                               </Badge>
-                              <span className="font-medium">{position.symbol}</span>
+                              <span className="font-medium text-sm">{position.symbol}</span>
                               {isPrivateMode && <Shield className="w-4 h-4 text-purple-400" />}
                             </div>
-                            <div className={`text-sm font-medium ${position.pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                              {formatPnL(position.pnl)} USD ({position.pnlPercent.toFixed(2)}%)
+                            <div className={`text-sm font-medium text-right ${position.pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                              <div>{formatPnL(position.pnl)} USD</div>
+                              <div className="text-xs">({position.pnlPercent.toFixed(2)}%)</div>
                             </div>
                           </div>
                           
-                          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                            <div>
-                              <div className="text-muted-foreground">Size</div>
-                              <div>{position.size} {position.symbol.split('/')[0]}</div>
+                          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 text-sm">
+                            <div className="space-y-1">
+                              <div className="text-muted-foreground text-xs">Size</div>
+                              <div className="font-medium">{position.size} {position.symbol.split('/')[0]}</div>
                             </div>
-                            <div>
-                              <div className="text-muted-foreground">Entry Price</div>
-                              <div>{formatPrice(position.entryPrice)}</div>
+                            <div className="space-y-1">
+                              <div className="text-muted-foreground text-xs">Entry Price</div>
+                              <div className="font-medium">{formatPrice(position.entryPrice)}</div>
                             </div>
-                            <div>
-                              <div className="text-muted-foreground">Mark Price</div>
-                              <div>{formatPrice(position.markPrice)}</div>
+                            <div className="space-y-1">
+                              <div className="text-muted-foreground text-xs">Mark Price</div>
+                              <div className="font-medium">{formatPrice(position.markPrice)}</div>
                             </div>
-                            <div>
-                              <div className="text-muted-foreground">Liq. Price</div>
-                              <div className="text-red-400">{formatPrice(position.liquidationPrice)}</div>
+                            <div className="space-y-1">
+                              <div className="text-muted-foreground text-xs">Liq. Price</div>
+                              <div className="text-red-400 font-medium">{formatPrice(position.liquidationPrice)}</div>
                             </div>
                           </div>
 
                           <div className="mt-3 flex items-center justify-between">
                             <div className="text-xs text-muted-foreground">
-                              Margin: {formatPrice(position.margin)} | Leverage: {position.leverage}x
+                              <span>Margin: {formatPrice(position.margin)}</span>
+                              <span className="mx-2">•</span>
+                              <span>Leverage: {position.leverage}x</span>
                             </div>
-                            <Button size="sm" variant="outline" className="text-red-400 border-red-400 hover:bg-red-400/10">
+                            <Button 
+                              size="sm" 
+                              variant="outline" 
+                              className="text-red-400 border-red-400 hover:bg-red-400/10 text-xs px-3 py-1 h-8"
+                            >
                               Close Position
                             </Button>
                           </div>

@@ -236,4 +236,58 @@
   .privacy-blur:hover {
     filter: blur(0px);
   }
+
+  /* Text Utilities */
+  .text-ellipsis {
+    @apply truncate;
+  }
+
+  .break-words {
+    word-break: break-word;
+    overflow-wrap: break-word;
+  }
+
+  .break-all {
+    word-break: break-all;
+  }
+
+  /* Responsive Grid Utilities */
+  .responsive-grid {
+    @apply grid gap-3;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  }
+
+  /* Contract Address Styling */
+  .contract-address {
+    @apply font-mono text-xs bg-purple-500/20 px-2 py-1 rounded border border-purple-500/30;
+    max-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Card Glass Enhanced */
+  .card-glass-enhanced {
+    @apply card-glass;
+    min-height: fit-content;
+    overflow: hidden;
+  }
+
+  /* Flex Utilities */
+  .flex-center {
+    @apply flex items-center justify-center;
+  }
+
+  .flex-between {
+    @apply flex items-center justify-between;
+  }
+
+  /* Spacing Utilities */
+  .space-y-safe {
+    @apply space-y-2 sm:space-y-3;
+  }
+
+  .gap-safe {
+    @apply gap-2 sm:gap-3 md:gap-4;
+  }
 }

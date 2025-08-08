@@ -95,6 +95,7 @@ export const useProductionZKP = () => {
         
         // Refresh balances and trade history after successful trade
         // Force refresh balances to reflect the trade immediately
+        // Increased delay to ensure blockchain state has updated
         setTimeout(async () => {
           try {
             console.log('🔄 Force refreshing balances after trade...');
@@ -107,7 +108,7 @@ export const useProductionZKP = () => {
           } catch (error) {
             console.error('❌ Error refreshing balances:', error);
           }
-        }, 2000);
+        }, 5000); // Increased from 2000ms to 5000ms
         
         // Refresh trade history to show the new trade
         setTimeout(() => {
