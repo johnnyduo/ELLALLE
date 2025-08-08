@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useDarkPool } from '@/hooks/useDarkPool';
 import { useMarketData } from '@/hooks/useMarketData';
+import { useUSDCFaucet } from '@/hooks/useUSDCFaucet';
 import { useWallet } from '@/hooks/useWallet';
 import { formatPercentage, formatPrice } from '@/lib/web3';
 import { Activity, AlertTriangle, Brain, CheckCircle, Minus, Plus, RefreshCw, Shield, Target, Wallet } from 'lucide-react';
@@ -13,10 +14,14 @@ import { toast } from 'sonner';
 
 const TradingDashboard = () => {
   const [isPrivateMode, setIsPrivateMode] = useState(false);
-  const [depositAmount, setDepositAmount] = useState('');
-  const [withdrawAmount, setWithdrawAmount] = useState('');
+  const [hbarDepositAmount, setHbarDepositAmount] = useState('');
+  const [hbarWithdrawAmount, setHbarWithdrawAmount] = useState('');
+  const [usdcDepositAmount, setUsdcDepositAmount] = useState('');
+  const [usdcWithdrawAmount, setUsdcWithdrawAmount] = useState('');
   const [showDepositModal, setShowDepositModal] = useState(false);
   const [showWithdrawModal, setShowWithdrawModal] = useState(false);
+  const [selectedDepositToken, setSelectedDepositToken] = useState<'HBAR' | 'USDC'>('HBAR');
+  const [selectedWithdrawToken, setSelectedWithdrawToken] = useState<'HBAR' | 'USDC'>('HBAR');
   const [txStatus, setTxStatus] = useState<{
     type: 'deposit' | 'withdraw' | null;
     hash: string | null;
@@ -36,17 +41,31 @@ const TradingDashboard = () => {
 
   const { account, isConnected: walletConnected, connect: connectWallet, balance: walletBalance } = useWallet();
   
+  // USDC Faucet integration (for wallet balance)
+  const { 
+    balance: walletUSDCBalance, 
+    checkBalance: checkWalletUSDCBalance,
+    claimUSDC,
+    canClaim,
+    isClaiming,
+    timeUntilNextClaim 
+  } = useUSDCFaucet(account);
+  
   const {
     isConnected: darkPoolConnected,
     balance: darkPoolBalance,
+    usdcBalance: darkPoolUSDCBalance,
     markets: darkPoolMarkets,
     systemStatus,
     loading: darkPoolLoading,
     error: darkPoolError,
     connect: connectDarkPool,
-    deposit,
-    withdraw,
+    depositHBAR,
+    withdrawHBAR,
+    depositUSDC,
+    withdrawUSDC,
     checkBalance,
+    checkUSDCBalance,
     refreshSystemStatus,
   } = useDarkPool();
 
@@ -57,12 +76,21 @@ const TradingDashboard = () => {
     }
   }, [walletConnected, account, darkPoolConnected, darkPoolLoading, connectDarkPool]);
 
+  // Check wallet USDC balance when wallet connects
+  useEffect(() => {
+    if (walletConnected && account) {
+      console.log('🔗 Wallet connected, checking USDC balance for:', account);
+      checkWalletUSDCBalance(account);
+    }
+  }, [walletConnected, account, checkWalletUSDCBalance]);
+
   // Auto-check balance when DarkPool connects
   useEffect(() => {
     if (darkPoolConnected && account) {
       checkBalance(account);
+      checkUSDCBalance(account);
     }
-  }, [darkPoolConnected, account, checkBalance]);
+  }, [darkPoolConnected, account, checkBalance, checkUSDCBalance]);
 
   // Clear transaction status after 10 seconds
   useEffect(() => {
@@ -74,9 +102,9 @@ const TradingDashboard = () => {
     }
   }, [txStatus.status]);
 
-  // Handle deposit
-  const handleDeposit = async () => {
-    if (!depositAmount || parseFloat(depositAmount) <= 0) {
+  // Handle HBAR deposit - Native token (recommended for stability)
+  const handleHBARDeposit = async () => {
+    if (!hbarDepositAmount || parseFloat(hbarDepositAmount) <= 0) {
       toast.error('Please enter a valid deposit amount');
       return;
     }
@@ -87,16 +115,16 @@ const TradingDashboard = () => {
     }
     
     const walletBalanceNum = parseFloat(walletBalance || '0');
-    const depositAmountNum = parseFloat(depositAmount);
+    const depositAmountNum = parseFloat(hbarDepositAmount);
     
-    console.log('Deposit validation:', {
+    console.log('HBAR Deposit validation:', {
       depositAmount: depositAmountNum,
       walletBalance: walletBalanceNum,
       account
     });
     
     if (depositAmountNum > walletBalanceNum) {
-      const errorMsg = `Insufficient wallet balance. Available: ${walletBalanceNum.toFixed(4)} HBAR, Requested: ${depositAmountNum.toFixed(4)} HBAR`;
+      const errorMsg = `Insufficient HBAR balance. Available: ${walletBalanceNum.toFixed(4)} HBAR, Requested: ${depositAmountNum.toFixed(4)} HBAR`;
       console.error(errorMsg);
       setTxStatus({ 
         type: 'deposit', 
@@ -108,33 +136,48 @@ const TradingDashboard = () => {
       return;
     }
     
-    setTxStatus({ type: 'deposit', hash: null, status: 'pending', message: 'Initiating deposit...' });
+    setTxStatus({ type: 'deposit', hash: null, status: 'pending', message: 'Initiating HBAR deposit to DarkPool...' });
     
     try {
-      console.log('Attempting deposit:', {
-        amount: depositAmount,
+      console.log('Calling CompactDarkPoolDEX depositHBAR:', {
+        amount: hbarDepositAmount,
         account,
-        contract: 'HederaDarkPoolManager'
+        contract: 'CompactDarkPoolDEX'
       });
       
-      const txHash = await deposit(depositAmount);
-      console.log('Deposit successful:', txHash);
+      // Create a status update function
+      const updateStatus = (message: string) => {
+        setTxStatus({ type: 'deposit', hash: null, status: 'pending', message });
+      };
+      
+      // Call the native HBAR deposit function
+      updateStatus('Sending HBAR to DarkPool contract...');
+      const txHash = await depositHBAR(hbarDepositAmount);
+      
+      console.log('HBAR Deposit successful:', txHash);
       
       setTxStatus({ 
         type: 'deposit', 
         hash: txHash, 
         status: 'success', 
-        message: `Successfully deposited ${depositAmount} HBAR` 
+        message: `Successfully deposited ${hbarDepositAmount} HBAR to CompactDarkPoolDEX` 
       });
-      setDepositAmount('');
+      setHbarDepositAmount('');
       setShowDepositModal(false);
       
-      toast.success(`Deposit successful! ${depositAmount} HBAR`);
+      toast.success(`HBAR Deposit successful! ${hbarDepositAmount} HBAR deposited to DarkPool`);
+      
+      // Refresh balances (reduced timeout since we now have instant confirmation)
+      if (account) {
+        setTimeout(() => {
+          checkBalance(account);
+        }, 1000); // Much shorter wait since depositHBAR now handles confirmation
+      }
       
     } catch (error: any) {
-      console.error('Deposit failed:', error);
+      console.error('HBAR Deposit failed:', error);
       
-      const errorMessage = error.message || 'Deposit failed';
+      const errorMessage = error.message || 'HBAR Deposit failed';
       setTxStatus({ 
         type: 'deposit', 
         hash: null, 
@@ -142,13 +185,13 @@ const TradingDashboard = () => {
         message: errorMessage
       });
       
-      toast.error(`Deposit failed: ${errorMessage}`);
+      toast.error(`HBAR Deposit failed: ${errorMessage}`);
     }
   };
 
-  // Handle withdraw
-  const handleWithdraw = async () => {
-    if (!withdrawAmount || parseFloat(withdrawAmount) <= 0) {
+  // Handle HBAR withdraw - Native token (recommended for stability)
+  const handleHBARWithdraw = async () => {
+    if (!hbarWithdrawAmount || parseFloat(hbarWithdrawAmount) <= 0) {
       toast.error('Please enter a valid withdrawal amount');
       return;
     }
@@ -158,17 +201,18 @@ const TradingDashboard = () => {
       return;
     }
     
-    const availableBalance = parseFloat(darkPoolBalance?.available || '0');
-    const withdrawAmountNum = parseFloat(withdrawAmount);
+    // Check actual DarkPool HBAR balance
+    const availableHBARBalance = parseFloat(darkPoolBalance?.available || '0');
+    const withdrawAmountNum = parseFloat(hbarWithdrawAmount);
     
-    console.log('Withdrawal validation:', {
+    console.log('HBAR Withdrawal validation:', {
       withdrawAmount: withdrawAmountNum,
-      availableBalance,
-      darkPoolBalance
+      availableHBARBalance,
+      account
     });
     
-    if (withdrawAmountNum > availableBalance) {
-      const errorMsg = `Insufficient balance. Available: ${availableBalance.toFixed(4)} HBAR, Requested: ${withdrawAmountNum.toFixed(4)} HBAR`;
+    if (withdrawAmountNum > availableHBARBalance) {
+      const errorMsg = `Insufficient HBAR balance in DarkPool. Available: ${availableHBARBalance.toFixed(4)} HBAR, Requested: ${withdrawAmountNum.toFixed(4)} HBAR`;
       console.error(errorMsg);
       setTxStatus({ 
         type: 'withdraw', 
@@ -180,41 +224,42 @@ const TradingDashboard = () => {
       return;
     }
     
-    // Refresh balance before attempting withdrawal
-    try {
-      console.log('Refreshing balance before withdrawal...');
-      await checkBalance(account);
-    } catch (balanceError) {
-      console.warn('Failed to refresh balance before withdrawal:', balanceError);
-    }
-    
-    setTxStatus({ type: 'withdraw', hash: null, status: 'pending', message: 'Initiating withdrawal...' });
+    setTxStatus({ type: 'withdraw', hash: null, status: 'pending', message: 'Initiating HBAR withdrawal from CompactDarkPoolDEX...' });
     
     try {
-      console.log('Attempting withdrawal:', {
-        amount: withdrawAmount,
+      console.log('Calling CompactDarkPoolDEX withdrawHBAR:', {
+        amount: hbarWithdrawAmount,
         account,
-        contract: 'HederaDarkPoolManager'
+        contract: 'CompactDarkPoolDEX'
       });
       
-      const txHash = await withdraw(withdrawAmount);
-      console.log('Withdrawal successful:', txHash);
+      // Call the native HBAR withdraw function
+      const txHash = await withdrawHBAR(hbarWithdrawAmount);
+      
+      console.log('HBAR Withdrawal successful:', txHash);
       
       setTxStatus({ 
         type: 'withdraw', 
         hash: txHash, 
         status: 'success', 
-        message: `Successfully withdrew ${withdrawAmount} HBAR` 
+        message: `Successfully withdrew ${hbarWithdrawAmount} HBAR from CompactDarkPoolDEX` 
       });
-      setWithdrawAmount('');
+      setHbarWithdrawAmount('');
       setShowWithdrawModal(false);
       
-      toast.success(`Withdrawal successful! ${withdrawAmount} HBAR`);
+      toast.success(`HBAR Withdrawal successful! ${hbarWithdrawAmount} HBAR withdrawn from DarkPool`);
+      
+      // Refresh balances (reduced timeout since we now have instant confirmation)
+      if (account) {
+        setTimeout(() => {
+          checkBalance(account);
+        }, 1000); // Much shorter wait since withdrawHBAR now handles confirmation
+      }
       
     } catch (error: any) {
-      console.error('Withdrawal failed:', error);
+      console.error('HBAR Withdrawal failed:', error);
       
-      const errorMessage = error.message || 'Withdrawal failed';
+      const errorMessage = error.message || 'HBAR Withdrawal failed';
       setTxStatus({ 
         type: 'withdraw', 
         hash: null, 
@@ -222,7 +267,179 @@ const TradingDashboard = () => {
         message: errorMessage
       });
       
-      toast.error(`Withdrawal failed: ${errorMessage}`);
+      toast.error(`HBAR Withdrawal failed: ${errorMessage}`);
+    }
+  };
+
+  // Handle USDC deposit - ERC-20 token (may have network stability issues)
+  const handleUSDCDeposit = async () => {
+    if (!usdcDepositAmount || parseFloat(usdcDepositAmount) <= 0) {
+      toast.error('Please enter a valid deposit amount');
+      return;
+    }
+    
+    if (!account) {
+      setTxStatus({ type: 'deposit', hash: null, status: 'error', message: 'Please connect your wallet first' });
+      return;
+    }
+    
+    const usdcBalanceNum = parseFloat(walletUSDCBalance || '0');
+    const depositAmountNum = parseFloat(usdcDepositAmount);
+    
+    console.log('USDC Deposit validation:', {
+      depositAmount: depositAmountNum,
+      usdcBalance: usdcBalanceNum,
+      account
+    });
+    
+    if (depositAmountNum > usdcBalanceNum) {
+      const errorMsg = `Insufficient USDC balance. Available: ${usdcBalanceNum.toFixed(2)} USDC, Requested: ${depositAmountNum.toFixed(2)} USDC`;
+      console.error(errorMsg);
+      setTxStatus({ 
+        type: 'deposit', 
+        hash: null, 
+        status: 'error', 
+        message: errorMsg
+      });
+      toast.error(errorMsg);
+      return;
+    }
+    
+    setTxStatus({ type: 'deposit', hash: null, status: 'pending', message: 'Checking USDC allowance and initiating deposit...' });
+    
+    try {
+      console.log('Calling real CompactDarkPoolDEX depositUSDC:', {
+        amount: usdcDepositAmount,
+        account,
+        contract: 'CompactDarkPoolDEX'
+      });
+      
+      // Create a status update function that we can pass to the deposit function
+      const updateStatus = (message: string) => {
+        setTxStatus({ type: 'deposit', hash: null, status: 'pending', message });
+      };
+      
+      // Call the real contract function with status updates
+      updateStatus('Validating USDC allowance and balance...');
+      const txHash = await depositUSDC(usdcDepositAmount);
+      
+      console.log('USDC Deposit successful:', txHash);
+      
+      setTxStatus({ 
+        type: 'deposit', 
+        hash: txHash, 
+        status: 'success', 
+        message: `Successfully deposited ${usdcDepositAmount} USDC to CompactDarkPoolDEX` 
+      });
+      setUsdcDepositAmount('');
+      setShowDepositModal(false);
+      
+      toast.success(`USDC Deposit successful! ${usdcDepositAmount} USDC deposited to DarkPool`);
+      
+      // Refresh balances
+      if (account) {
+        setTimeout(() => {
+          checkUSDCBalance(account);
+          checkBalance(account);
+          checkWalletUSDCBalance(account); // Refresh wallet balance too
+        }, 5000); // Wait longer for Hedera transaction processing
+      }
+      
+    } catch (error: any) {
+      console.error('USDC Deposit failed:', error);
+      
+      const errorMessage = error.message || 'USDC Deposit failed';
+      setTxStatus({ 
+        type: 'deposit', 
+        hash: null, 
+        status: 'error', 
+        message: errorMessage
+      });
+      
+      toast.error(`USDC Deposit failed: ${errorMessage}`);
+    }
+  };
+
+  // Handle USDC withdraw - Real contract call
+  const handleUSDCWithdraw = async () => {
+    if (!usdcWithdrawAmount || parseFloat(usdcWithdrawAmount) <= 0) {
+      toast.error('Please enter a valid withdrawal amount');
+      return;
+    }
+    
+    if (!account) {
+      setTxStatus({ type: 'withdraw', hash: null, status: 'error', message: 'Please connect your wallet first' });
+      return;
+    }
+    
+    // Check actual DarkPool USDC balance
+    const availableUSDCBalance = parseFloat(darkPoolBalance?.available || '0');
+    const withdrawAmountNum = parseFloat(usdcWithdrawAmount);
+    
+    console.log('USDC Withdrawal validation:', {
+      withdrawAmount: withdrawAmountNum,
+      availableUSDCBalance,
+      account
+    });
+    
+    if (withdrawAmountNum > availableUSDCBalance) {
+      const errorMsg = `Insufficient USDC balance in DarkPool. Available: ${availableUSDCBalance.toFixed(6)} USDC, Requested: ${withdrawAmountNum.toFixed(6)} USDC`;
+      console.error(errorMsg);
+      setTxStatus({ 
+        type: 'withdraw', 
+        hash: null, 
+        status: 'error', 
+        message: errorMsg
+      });
+      toast.error(errorMsg);
+      return;
+    }
+    
+    setTxStatus({ type: 'withdraw', hash: null, status: 'pending', message: 'Initiating USDC withdrawal from CompactDarkPoolDEX...' });
+    
+    try {
+      console.log('Calling real CompactDarkPoolDEX withdrawUSDC:', {
+        amount: usdcWithdrawAmount,
+        account,
+        contract: 'CompactDarkPoolDEX'
+      });
+      
+      // Call the real contract function
+      const txHash = await withdrawUSDC(usdcWithdrawAmount);
+      
+      console.log('USDC Withdrawal successful:', txHash);
+      
+      setTxStatus({ 
+        type: 'withdraw', 
+        hash: txHash, 
+        status: 'success', 
+        message: `Successfully withdrew ${usdcWithdrawAmount} USDC from CompactDarkPoolDEX` 
+      });
+      setUsdcWithdrawAmount('');
+      setShowWithdrawModal(false);
+      
+      toast.success(`USDC Withdrawal successful! ${usdcWithdrawAmount} USDC withdrawn from DarkPool`);
+      
+      // Refresh balances
+      if (account) {
+        setTimeout(() => {
+          checkUSDCBalance(account);
+          checkBalance(account);
+        }, 2000); // Wait a bit for transaction to be processed
+      }
+      
+    } catch (error: any) {
+      console.error('USDC Withdrawal failed:', error);
+      
+      const errorMessage = error.message || 'USDC Withdrawal failed';
+      setTxStatus({ 
+        type: 'withdraw', 
+        hash: null, 
+        status: 'error', 
+        message: errorMessage
+      });
+      
+      toast.error(`USDC Withdrawal failed: ${errorMessage}`);
     }
   };
 
@@ -346,7 +563,7 @@ const TradingDashboard = () => {
                   {txStatus.hash && (
                     <div className="text-xs text-muted-foreground mt-1">
                       <a 
-                        href={`https://hashscan.io/previewnet/transaction/${txStatus.hash}`}
+                        href={`https://hashscan.io/testnet/transaction/${txStatus.hash}`}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="text-neon-purple hover:underline"
@@ -412,56 +629,169 @@ const TradingDashboard = () => {
                 {/* Balance */}
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <div className="text-sm text-muted-foreground">DarkPool Balance</div>
+                    <div className="text-sm text-muted-foreground">Your DarkPool Deposits</div>
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => account && checkBalance(account)}
+                      onClick={() => {
+                        if (account) {
+                          checkBalance(account);
+                          checkUSDCBalance(account);
+                        }
+                      }}
                       disabled={darkPoolLoading}
                       className="h-6 w-6 p-0 text-muted-foreground hover:text-white"
                     >
                       <RefreshCw className={`w-3 h-3 ${darkPoolLoading ? 'animate-spin' : ''}`} />
                     </Button>
                   </div>
-                  <div className="text-lg font-semibold">
-                    {darkPoolBalance ? 
-                      (parseFloat(darkPoolBalance.available || '0') + parseFloat(darkPoolBalance.locked || '0')).toFixed(4) 
-                      : '-.----'
-                    } HBAR
-                  </div>
-                  <div className="text-xs text-muted-foreground">
-                    Available: {darkPoolBalance?.available || '-.----'} HBAR
-                  </div>
-                  {darkPoolBalance?.locked && parseFloat(darkPoolBalance.locked) > 0 && (
-                    <div className="text-xs text-muted-foreground">
-                      Locked: {darkPoolBalance.locked} HBAR
+                  
+                  {/* HBAR Balance in DarkPool */}
+                  <div className="space-y-1">
+                    <div className="text-lg font-semibold flex items-center space-x-2">
+                      <span>
+                        {darkPoolBalance ? 
+                          (parseFloat(darkPoolBalance.available || '0') + parseFloat(darkPoolBalance.locked || '0')).toFixed(4) 
+                          : '0.0000'
+                        } HBAR
+                      </span>
                     </div>
-                  )}
+                    <div className="text-xs text-muted-foreground">
+                      Available: {darkPoolBalance?.available || '0.0000'} HBAR
+                    </div>
+                    {darkPoolBalance?.locked && parseFloat(darkPoolBalance.locked) > 0 && (
+                      <div className="text-xs text-muted-foreground">
+                        Locked in positions: {darkPoolBalance.locked} HBAR
+                      </div>
+                    )}
+                  </div>
+
+                  {/* USDC Balance in DarkPool */}
+                  <div className="space-y-1 pt-2 border-t border-white/10">
+                    <div className="text-lg font-semibold flex items-center space-x-2">
+                      <span className="text-neon-blue">
+                        {darkPoolUSDCBalance ? 
+                          (parseFloat(darkPoolUSDCBalance.available || '0') + parseFloat(darkPoolUSDCBalance.locked || '0')).toFixed(6) 
+                          : '0.000000'
+                        } USDC
+                      </span>
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      Available: {darkPoolUSDCBalance?.available ? parseFloat(darkPoolUSDCBalance.available).toFixed(6) : '0.000000'} USDC
+                    </div>
+                    {darkPoolUSDCBalance?.locked && parseFloat(darkPoolUSDCBalance.locked) > 0 && (
+                      <div className="text-xs text-muted-foreground">
+                        Locked in positions: {parseFloat(darkPoolUSDCBalance.locked).toFixed(6)} USDC
+                      </div>
+                    )}
+                    <div className="text-xs text-neon-blue">
+                      💰 CompactDarkPoolDEX Contract
+                    </div>
+                  </div>
+                  
+                  <div className="text-xs text-muted-foreground mt-2 pt-2 border-t border-white/10">
+                    <div className="flex justify-between">
+                      <span>Wallet USDC:</span>
+                      <span className="text-neon-blue">
+                        {(() => {
+                          console.log('💰 Rendering wallet USDC balance:', walletUSDCBalance);
+                          return parseFloat(walletUSDCBalance || '0').toLocaleString(undefined, { 
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2 
+                          })
+                        })()} USDC
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Wallet HBAR:</span>
+                      <span>{walletBalance || '0.0000'} HBAR</span>
+                    </div>
+                  </div>
                 </div>
 
                 {/* Actions */}
                 <div className="space-y-2">
-                  <div className="text-sm text-muted-foreground">Actions</div>
-                  <div className="flex space-x-2">
-                    <Button
-                      size="sm"
-                      onClick={() => setShowDepositModal(true)}
-                      disabled={!darkPoolConnected || darkPoolLoading}
-                      className="btn-hero"
-                    >
-                      <Plus className="w-4 h-4 mr-1" />
-                      Deposit
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => setShowWithdrawModal(true)}
-                      disabled={!darkPoolConnected || darkPoolLoading || !darkPoolBalance?.available || parseFloat(darkPoolBalance.available) <= 0}
-                    >
-                      <Minus className="w-4 h-4 mr-1" />
-                      Withdraw
-                    </Button>
+                  <div className="text-sm text-muted-foreground">DarkPool Actions</div>
+                  <div className="flex flex-col space-y-2">
+                    {/* HBAR Actions */}
+                    <div className="flex space-x-2">
+                      <Button
+                        size="sm"
+                        onClick={() => {
+                          setSelectedDepositToken('HBAR');
+                          setShowDepositModal(true);
+                        }}
+                        disabled={!darkPoolConnected || darkPoolLoading || !walletBalance || parseFloat(walletBalance) <= 0}
+                        className="btn-hero flex-1"
+                      >
+                        <Plus className="w-4 h-4 mr-1" />
+                        Deposit HBAR
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setSelectedWithdrawToken('HBAR');
+                          setShowWithdrawModal(true);
+                        }}
+                        disabled={!darkPoolConnected || darkPoolLoading}
+                        className="flex-1"
+                      >
+                        <Minus className="w-4 h-4 mr-1" />
+                        Withdraw HBAR
+                      </Button>
+                    </div>
+                    
+                    {/* USDC Actions */}
+                    <div className="flex space-x-2">
+                      <Button
+                        size="sm"
+                        onClick={() => {
+                          setSelectedDepositToken('USDC');
+                          setShowDepositModal(true);
+                        }}
+                        disabled={!darkPoolConnected || darkPoolLoading || !walletUSDCBalance || parseFloat(walletUSDCBalance) <= 0}
+                        className="bg-blue-600 hover:bg-blue-700 text-white flex-1"
+                      >
+                        <Plus className="w-4 h-4 mr-1" />
+                        Deposit USDC
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setSelectedWithdrawToken('USDC');
+                          setShowWithdrawModal(true);
+                        }}
+                        disabled={!darkPoolConnected || darkPoolLoading}
+                        className="flex-1"
+                      >
+                        <Minus className="w-4 h-4 mr-1" />
+                        Withdraw USDC
+                      </Button>
+                    </div>
                   </div>
+                  
+                  {/* Faucet Button or Deposit Message */}
+                  {(!walletUSDCBalance || parseFloat(walletUSDCBalance) <= 0) ? (
+                    <div className="space-y-2">
+                      <div className="text-xs text-muted-foreground">
+                        Get USDC from the faucet to enable deposits
+                      </div>
+                      <Button
+                        size="sm"
+                        onClick={claimUSDC}
+                        disabled={!canClaim || isClaiming}
+                        className="w-full bg-green-600 hover:bg-green-700 text-white"
+                      >
+                        {isClaiming ? 'Claiming...' : canClaim ? 'Claim 1,000 USDC' : `Wait ${Math.ceil(timeUntilNextClaim / 3600)}h`}
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="text-xs text-muted-foreground">
+                      Deposit USDC to start trading in the DarkPool
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -615,6 +945,7 @@ const TradingDashboard = () => {
           isPrivateMode={isPrivateMode}
           onPrivateModeChange={setIsPrivateMode}
           walletBalance={walletBalance || '0.0'}
+          usdcBalance={darkPoolUSDCBalance?.available || '0.0'}
           onTrade={async (order) => {
             // Simulate order processing
             toast.success(`${order.side.toUpperCase()} order placed for ${order.size} ${order.symbol}`);
@@ -634,41 +965,68 @@ const TradingDashboard = () => {
               <CardHeader>
                 <CardTitle className="flex items-center space-x-2">
                   <Plus className="w-5 h-5 text-neon-purple" />
-                  <span>Deposit HBAR</span>
+                  <span>Deposit {selectedDepositToken} to DarkPool</span>
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
+                <div className="text-sm text-muted-foreground mb-3">
+                  Deposit {selectedDepositToken} from your wallet into the DarkPool contract for trading.
+                </div>
                 <div>
                   <label className="text-sm font-medium text-muted-foreground mb-2 block">
-                    Amount (HBAR)
+                    Amount ({selectedDepositToken})
                   </label>
                   <input
                     type="number"
-                    value={depositAmount}
-                    onChange={(e) => setDepositAmount(e.target.value)}
-                    placeholder="0.0"
-                    step="0.1"
+                    value={selectedDepositToken === 'HBAR' ? hbarDepositAmount : usdcDepositAmount}
+                    onChange={(e) => selectedDepositToken === 'HBAR' ? setHbarDepositAmount(e.target.value) : setUsdcDepositAmount(e.target.value)}
+                    placeholder="0.00"
+                    step="0.01"
                     min="0"
                     className="w-full glass rounded-lg p-3 text-lg font-semibold bg-transparent border border-white/10 focus:border-neon-purple/50 outline-none"
                   />
                   <div className="flex items-center justify-between mt-2">
                     <div className="text-xs text-muted-foreground">
-                      Wallet Balance: {walletBalance || '0.0'} HBAR
+                      Wallet Balance: {selectedDepositToken === 'HBAR' ? 
+                        parseFloat(walletBalance).toLocaleString(undefined, { 
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2 
+                        }) : 
+                        parseFloat(walletUSDCBalance || '0').toLocaleString(undefined, { 
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2 
+                        })
+                      } {selectedDepositToken}
                     </div>
                     <div className="flex space-x-1">
                       <Button
                         size="sm"
                         variant="ghost"
-                        onClick={() => setDepositAmount('5')}
+                        onClick={() => selectedDepositToken === 'HBAR' ? setHbarDepositAmount('100') : setUsdcDepositAmount('100')}
                         className="text-xs px-2 py-1"
                       >
-                        5
+                        100
                       </Button>
-                      {walletBalance && parseFloat(walletBalance) > 0 && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => selectedDepositToken === 'HBAR' ? setHbarDepositAmount('500') : setUsdcDepositAmount('500')}
+                        className="text-xs px-2 py-1"
+                      >
+                        500
+                      </Button>
+                      {((selectedDepositToken === 'HBAR' && walletBalance && parseFloat(walletBalance) > 0) ||
+                        (selectedDepositToken === 'USDC' && walletUSDCBalance && parseFloat(walletUSDCBalance) > 0)) && (
                         <Button
                           size="sm"
                           variant="ghost"
-                          onClick={() => setDepositAmount((parseFloat(walletBalance) * 0.9).toFixed(2))}
+                          onClick={() => {
+                            if (selectedDepositToken === 'HBAR') {
+                              setHbarDepositAmount((parseFloat(walletBalance) * 0.9).toFixed(2));
+                            } else {
+                              setUsdcDepositAmount((parseFloat(walletUSDCBalance || '0') * 0.9).toFixed(2));
+                            }
+                          }}
                           className="text-xs px-2 py-1"
                         >
                           Max
@@ -678,12 +1036,18 @@ const TradingDashboard = () => {
                   </div>
                   
                   {/* Validation Messages */}
-                  {depositAmount && parseFloat(depositAmount) > parseFloat(walletBalance || '0') && (
+                  {selectedDepositToken === 'HBAR' && hbarDepositAmount && parseFloat(hbarDepositAmount) > parseFloat(walletBalance || '0') && (
                     <div className="text-xs text-red-400 mt-1">
-                      Insufficient wallet balance
+                      Insufficient HBAR balance
                     </div>
                   )}
-                  {depositAmount && parseFloat(depositAmount) <= 0 && (
+                  {selectedDepositToken === 'USDC' && usdcDepositAmount && parseFloat(usdcDepositAmount) > parseFloat(walletUSDCBalance || '0') && (
+                    <div className="text-xs text-red-400 mt-1">
+                      Insufficient USDC balance
+                    </div>
+                  )}
+                  {((selectedDepositToken === 'HBAR' && hbarDepositAmount && parseFloat(hbarDepositAmount) <= 0) ||
+                    (selectedDepositToken === 'USDC' && usdcDepositAmount && parseFloat(usdcDepositAmount) <= 0)) && (
                     <div className="text-xs text-red-400 mt-1">
                       Amount must be greater than 0
                     </div>
@@ -700,17 +1064,25 @@ const TradingDashboard = () => {
                   </Button>
                   <Button 
                     className="flex-1 btn-hero"
-                    onClick={handleDeposit}
+                    onClick={selectedDepositToken === 'HBAR' ? handleHBARDeposit : handleUSDCDeposit}
                     disabled={
-                      !depositAmount || 
-                      parseFloat(depositAmount) <= 0 || 
-                      parseFloat(depositAmount) > parseFloat(walletBalance || '0') ||
-                      darkPoolLoading || 
-                      txStatus.status === 'pending'
+                      selectedDepositToken === 'HBAR' ? (
+                        !hbarDepositAmount || 
+                        parseFloat(hbarDepositAmount) <= 0 || 
+                        parseFloat(hbarDepositAmount) > parseFloat(walletBalance || '0') ||
+                        darkPoolLoading || 
+                        txStatus.status === 'pending'
+                      ) : (
+                        !usdcDepositAmount || 
+                        parseFloat(usdcDepositAmount) <= 0 || 
+                        parseFloat(usdcDepositAmount) > parseFloat(walletUSDCBalance || '0') ||
+                        darkPoolLoading || 
+                        txStatus.status === 'pending'
+                      )
                     }
                   >
                     {txStatus.status === 'pending' && txStatus.type === 'deposit' ? 'Processing...' : 
-                     darkPoolLoading ? 'Processing...' : 'Deposit'}
+                     darkPoolLoading ? 'Processing...' : `Deposit ${selectedDepositToken}`}
                   </Button>
                 </div>
               </CardContent>
@@ -725,48 +1097,63 @@ const TradingDashboard = () => {
               <CardHeader>
                 <CardTitle className="flex items-center space-x-2">
                   <Minus className="w-5 h-5 text-neon-purple" />
-                  <span>Withdraw HBAR</span>
+                  <span>Withdraw {selectedWithdrawToken} from DarkPool</span>
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
+                <div className="text-sm text-muted-foreground mb-3">
+                  Withdraw your deposited {selectedWithdrawToken} from the DarkPool contract back to your wallet.
+                </div>
                 <div>
                   <label className="text-sm font-medium text-muted-foreground mb-2 block">
-                    Amount (HBAR)
+                    Amount ({selectedWithdrawToken})
                   </label>
                   <input
                     type="number"
-                    value={withdrawAmount}
-                    onChange={(e) => setWithdrawAmount(e.target.value)}
-                    placeholder="0.0"
-                    step="0.1"
+                    value={selectedWithdrawToken === 'HBAR' ? hbarWithdrawAmount : usdcWithdrawAmount}
+                    onChange={(e) => selectedWithdrawToken === 'HBAR' ? setHbarWithdrawAmount(e.target.value) : setUsdcWithdrawAmount(e.target.value)}
+                    placeholder="0.00"
+                    step="0.01"
                     min="0"
                     className="w-full glass rounded-lg p-3 text-lg font-semibold bg-transparent border border-white/10 focus:border-neon-purple/50 outline-none"
                   />
                   <div className="flex items-center justify-between mt-2">
                     <div className="text-xs text-muted-foreground">
-                      Available: {darkPoolBalance?.available || '0.0'} HBAR
+                      DarkPool {selectedWithdrawToken} Balance: {darkPoolBalance?.available ? parseFloat(darkPoolBalance.available).toFixed(6) : '0.000000'} {selectedWithdrawToken}
                     </div>
                     <div className="flex space-x-1">
-                      {darkPoolBalance?.available && parseFloat(darkPoolBalance.available) > 0 && (
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => setWithdrawAmount(darkPoolBalance.available)}
-                          className="text-xs px-2 py-1"
-                        >
-                          Max
-                        </Button>
-                      )}
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => {
+                          const maxAmount = darkPoolBalance?.available ? parseFloat(darkPoolBalance.available).toFixed(6) : '0';
+                          if (selectedWithdrawToken === 'HBAR') {
+                            setHbarWithdrawAmount(maxAmount);
+                          } else {
+                            setUsdcWithdrawAmount(maxAmount);
+                          }
+                        }}
+                        className="text-xs px-2 py-1"
+                        disabled={!darkPoolBalance?.available || parseFloat(darkPoolBalance.available) <= 0}
+                      >
+                        Max
+                      </Button>
                     </div>
                   </div>
                   
                   {/* Validation Messages */}
-                  {withdrawAmount && parseFloat(withdrawAmount) > parseFloat(darkPoolBalance?.available || '0') && (
+                  {selectedWithdrawToken === 'HBAR' && hbarWithdrawAmount && parseFloat(hbarWithdrawAmount) > parseFloat(darkPoolBalance?.available || '0') && (
                     <div className="text-xs text-red-400 mt-1">
-                      Insufficient DarkPool balance
+                      Insufficient HBAR balance in DarkPool
                     </div>
                   )}
-                  {withdrawAmount && parseFloat(withdrawAmount) <= 0 && (
+                  {selectedWithdrawToken === 'USDC' && usdcWithdrawAmount && parseFloat(usdcWithdrawAmount) > parseFloat(darkPoolBalance?.available || '0') && (
+                    <div className="text-xs text-red-400 mt-1">
+                      Insufficient USDC balance in DarkPool
+                    </div>
+                  )}
+                  {((selectedWithdrawToken === 'HBAR' && hbarWithdrawAmount && parseFloat(hbarWithdrawAmount) <= 0) ||
+                    (selectedWithdrawToken === 'USDC' && usdcWithdrawAmount && parseFloat(usdcWithdrawAmount) <= 0)) && (
                     <div className="text-xs text-red-400 mt-1">
                       Amount must be greater than 0
                     </div>
@@ -783,17 +1170,20 @@ const TradingDashboard = () => {
                   </Button>
                   <Button 
                     className="flex-1 btn-hero"
-                    onClick={handleWithdraw}
+                    onClick={selectedWithdrawToken === 'HBAR' ? handleHBARWithdraw : handleUSDCWithdraw}
                     disabled={
-                      !withdrawAmount || 
-                      parseFloat(withdrawAmount) <= 0 || 
-                      parseFloat(withdrawAmount) > parseFloat(darkPoolBalance?.available || '0') ||
-                      darkPoolLoading || 
-                      txStatus.status === 'pending'
+                      selectedWithdrawToken === 'HBAR' ? (
+                        !hbarWithdrawAmount || 
+                        parseFloat(hbarWithdrawAmount) <= 0 || 
+                        txStatus.status === 'pending'
+                      ) : (
+                        !usdcWithdrawAmount || 
+                        parseFloat(usdcWithdrawAmount) <= 0 || 
+                        txStatus.status === 'pending'
+                      )
                     }
                   >
-                    {txStatus.status === 'pending' && txStatus.type === 'withdraw' ? 'Processing...' : 
-                     darkPoolLoading ? 'Processing...' : 'Withdraw'}
+                    {txStatus.status === 'pending' && txStatus.type === 'withdraw' ? 'Processing...' : `Withdraw ${selectedWithdrawToken}`}
                   </Button>
                 </div>
               </CardContent>

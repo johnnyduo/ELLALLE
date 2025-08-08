@@ -74,7 +74,7 @@ export const getChainId = () => {
 export const isConnectedToHedera = () => {
   const chainId = getChainId();
   const hederaChainId = Number(import.meta.env.VITE_CHAIN_ID) || 296;
-  return chainId === hederaChainId || chainId === 295; // Previewnet or Mainnet
+  return chainId === hederaChainId || chainId === 295; // Testnet or Mainnet
 };
 
 // Subscribe to account changes
@@ -93,9 +93,9 @@ export const config = {
   appName,
   appUrl,
   chainId: Number(import.meta.env.VITE_CHAIN_ID) || 296,
-  rpcUrl: import.meta.env.VITE_RPC_URL || 'https://previewnet.hashio.io/api',
-  explorerUrl: import.meta.env.VITE_BLOCK_EXPLORER_URL || 'https://hashscan.io/previewnet',
-  networkName: import.meta.env.VITE_NETWORK_NAME || 'Hedera Previewnet',
+  rpcUrl: import.meta.env.VITE_RPC_URL || 'https://testnet.hashio.io/api',
+  explorerUrl: import.meta.env.VITE_BLOCK_EXPLORER_URL || 'https://hashscan.io/testnet',
+  networkName: import.meta.env.VITE_NETWORK_NAME || 'Hedera Testnet',
   currencySymbol: import.meta.env.VITE_CURRENCY_SYMBOL || 'HBAR',
 };
 

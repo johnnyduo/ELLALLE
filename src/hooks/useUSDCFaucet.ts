@@ -1,6 +1,6 @@
 import { CONTRACT_CONFIG } from '@/lib/env';
 import { ethers } from 'ethers';
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { toast } from 'sonner';
 
 // USDC Contract ABI - only the functions we need
@@ -58,10 +58,11 @@ export const useUSDCFaucet = (account?: string) => {
   };
 
   // Check USDC balance
-  const checkBalance = async (userAccount?: string) => {
+  const checkBalance = useCallback(async (userAccount?: string) => {
     if (!userAccount && !account) return;
     
     try {
+      console.log('🔍 Checking wallet USDC balance for:', userAccount || account);
       setState(prev => ({ ...prev, isLoading: true }));
       
       const contract = await getContract(false);
@@ -77,6 +78,13 @@ export const useUSDCFaucet = (account?: string) => {
       const formattedBalance = ethers.formatUnits(balance, decimals);
       const timeUntilNextClaim = Number(timeUntilNext);
       
+      console.log('💰 Wallet USDC balance result:', {
+        raw: balance.toString(),
+        formatted: formattedBalance,
+        decimals: decimals.toString(),
+        canClaim: timeUntilNextClaim === 0
+      });
+      
       setState(prev => ({
         ...prev,
         balance: formattedBalance,
@@ -88,14 +96,14 @@ export const useUSDCFaucet = (account?: string) => {
       
       return formattedBalance;
     } catch (error) {
-      console.error('Error checking USDC balance:', error);
+      console.error('❌ Error checking wallet USDC balance:', error);
       setState(prev => ({ ...prev, isLoading: false }));
       return '0';
     }
-  };
+  }, [account]);
 
   // Claim USDC from faucet
-  const claimUSDC = async () => {
+  const claimUSDC = useCallback(async () => {
     if (!account) {
       toast.error('Please connect your wallet first');
       return false;
@@ -157,10 +165,10 @@ export const useUSDCFaucet = (account?: string) => {
       setState(prev => ({ ...prev, isClaiming: false }));
       return false;
     }
-  };
+  }, [account, checkBalance]);
 
   // Format time remaining until next claim
-  const formatTimeUntilNextClaim = (seconds: number): string => {
+  const formatTimeUntilNextClaim = useCallback((seconds: number): string => {
     if (seconds === 0) return 'Available now';
     
     const hours = Math.floor(seconds / 3600);
@@ -174,10 +182,10 @@ export const useUSDCFaucet = (account?: string) => {
     } else {
       return `${remainingSeconds}s`;
     }
-  };
+  }, []);
 
   // Get contract info
-  const getContractInfo = async () => {
+  const getContractInfo = useCallback(async () => {
     try {
       const contract = await getContract(false);
       const [name, symbol, decimals, faucetAmount] = await Promise.all([
@@ -198,7 +206,7 @@ export const useUSDCFaucet = (account?: string) => {
       console.error('Error getting contract info:', error);
       return null;
     }
-  };
+  }, []);
 
   return {
     ...state,

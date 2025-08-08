@@ -9,6 +9,14 @@ import "../libraries/SafeTransfer.sol";
 import "../oracle/PythPriceConsumer.sol";
 import "../zkp/NoirVerifier.sol";
 
+// ERC20 interface for USDC
+interface IERC20 {
+    function transfer(address to, uint256 amount) external returns (bool);
+    function transferFrom(address from, address to, uint256 amount) external returns (bool);
+    function balanceOf(address account) external view returns (uint256);
+    function approve(address spender, uint256 amount) external returns (bool);
+}
+
 contract DarkpoolPerpDEX is IDarkpoolPerpDEX, DarkpoolStorage {
     using MathLib for uint256;
     using SafeTransfer for address;
@@ -16,10 +24,14 @@ contract DarkpoolPerpDEX is IDarkpoolPerpDEX, DarkpoolStorage {
     // Contracts
     NoirVerifier public immutable noirVerifierContract;
     PythPriceConsumer public immutable priceOracleContract;
+    IERC20 public immutable usdcToken;
     
-    constructor() {
+    constructor(address _usdcToken) {
+        require(_usdcToken != address(0), "Invalid USDC address");
+        
         owner = msg.sender;
         treasury = msg.sender;
+        usdcToken = IERC20(_usdcToken);
         
         // Deploy sub-contracts
         noirVerifierContract = new NoirVerifier();
@@ -72,18 +84,41 @@ contract DarkpoolPerpDEX is IDarkpoolPerpDEX, DarkpoolStorage {
     
     // ============ USER FUNCTIONS ============
     
+    // Legacy HBAR deposit (keeping for backward compatibility)
     function deposit() external payable override whenNotPaused {
         require(msg.value > 0, "Invalid amount");
         balances[msg.sender] += msg.value;
         emit Deposit(msg.sender, msg.value);
     }
     
+    // New USDC deposit function
+    function depositUSDC(uint256 amount) external whenNotPaused {
+        require(amount > 0, "Invalid amount");
+        require(usdcToken.transferFrom(msg.sender, address(this), amount), "USDC transfer failed");
+        
+        balances[msg.sender] += amount;
+        emit Deposit(msg.sender, amount);
+    }
+    
+    // Legacy HBAR withdraw (keeping for backward compatibility)
     function withdraw(uint256 amount) external override whenNotPaused {
         require(balances[msg.sender] >= amount, "Insufficient balance");
         require(lockedBalances[msg.sender] == 0, "Balance locked");
         
         balances[msg.sender] -= amount;
         SafeTransfer.safeTransferETH(msg.sender, amount);
+        
+        emit Withdrawal(msg.sender, amount);
+    }
+    
+    // New USDC withdraw function
+    function withdrawUSDC(uint256 amount) external whenNotPaused {
+        require(amount > 0, "Invalid amount");
+        require(balances[msg.sender] >= amount, "Insufficient balance");
+        require(lockedBalances[msg.sender] == 0, "Balance locked");
+        
+        balances[msg.sender] -= amount;
+        require(usdcToken.transfer(msg.sender, amount), "USDC transfer failed");
         
         emit Withdrawal(msg.sender, amount);
     }
@@ -407,6 +442,10 @@ contract DarkpoolPerpDEX is IDarkpoolPerpDEX, DarkpoolStorage {
     
     function getMarketSymbols() external view returns (string[] memory) {
         return marketSymbols;
+    }
+    
+    function getUSDCAddress() external view returns (address) {
+        return address(usdcToken);
     }
     
     // ============ ADMIN FUNCTIONS ============

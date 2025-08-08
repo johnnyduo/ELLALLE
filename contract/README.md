@@ -12,9 +12,9 @@
 | **PriceOracle** | `0xD2163E87d7fd20bc91e7B80D4D5AbcBad4Eb0888` | Price oracle integration |
 
 ### **🌐 Network:**
-- **Chain ID:** 297 (Hedera Previewnet)
-- **RPC:** https://previewnet.hashio.io/api
-- **Explorer:** https://hashscan.io/previewnet
+- **Chain ID:** 296 (Hedera Testnet)
+- **RPC:** https://testnet.hashio.io/api
+- **Explorer:** https://hashscan.io/testnet
 
 ---
 
@@ -91,11 +91,11 @@ Use the ultra-minimal `DeploymentHelper.sol`:
 
 ## 🔧 **Network Configuration**
 
-**Hedera Previewnet:**
-- **Chain ID:** 297
-- **RPC:** https://previewnet.hashio.io/api
+**Hedera Testnet:**
+- **Chain ID:** 296
+- **RPC:** https://testnet.hashio.io/api
 - **Currency:** HBAR
-- **Explorer:** https://hashscan.io/previewnet
+- **Explorer:** https://hashscan.io/testnet
 
 ## 📊 **Auto-Initialized Markets**
 

@@ -19,12 +19,12 @@ export const WalletButton: React.FC = () => {
     switchToHedera 
   } = useWallet();
 
-  const isHederaPreviewnet = chainId === 297;
+  const isHederaTestnet = chainId === 296;
 
   if (isConnected && account) {
     return (
       <div className="flex items-center gap-2">
-        {!isHederaPreviewnet && (
+        {!isHederaTestnet && (
           <Button
             variant="outline"
             size="sm"
@@ -50,9 +50,9 @@ export const WalletButton: React.FC = () => {
             </Badge>
           )}
           
-          {isHederaPreviewnet && (
+          {isHederaTestnet && (
             <Badge variant="outline" className="text-xs text-purple-600">
-              Hedera Previewnet
+              Hedera Testnet
             </Badge>
           )}
         </div>

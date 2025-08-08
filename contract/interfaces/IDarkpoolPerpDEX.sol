@@ -53,6 +53,8 @@ interface IDarkpoolPerpDEX {
     // Functions
     function deposit() external payable;
     function withdraw(uint256 amount) external;
+    function depositUSDC(uint256 amount) external;
+    function withdrawUSDC(uint256 amount) external;
     function submitEncryptedOrder(
         bytes32 commitment,
         bytes calldata proof,

@@ -1,13 +1,13 @@
 // Web3 utility functions for ELLALLE platform with Hedera support
 
 export const SUPPORTED_CHAINS = {
-  297: {
-    chainId: 297,
-    name: 'Hedera Previewnet',
+  296: {
+    chainId: 296,
+    name: 'Hedera Testnet',
     currency: 'HBAR',
-    rpcUrl: 'https://previewnet.hashio.io/api',
-    blockExplorer: 'https://hashscan.io/previewnet',
-    mirrorNode: 'https://previewnet.mirrornode.hedera.com',
+    rpcUrl: 'https://testnet.hashio.io/api',
+    blockExplorer: 'https://hashscan.io/testnet',
+    mirrorNode: 'https://testnet.mirrornode.hedera.com',
     testnet: true,
   },
   295: {
@@ -30,7 +30,7 @@ export const SUPPORTED_CHAINS = {
   },
 } as const;
 
-export const DEFAULT_CHAIN_ID = 297; // Hedera Previewnet
+export const DEFAULT_CHAIN_ID = 296; // Hedera Testnet
 
 export const formatAddress = (address: string, chars = 4): string => {
   if (!address) return '';

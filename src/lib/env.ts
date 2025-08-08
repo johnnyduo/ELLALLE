@@ -18,14 +18,14 @@ export const API_CONFIG = {
   wsReconnectTimeout: Number(import.meta.env.VITE_WS_RECONNECT_TIMEOUT) || 5000,
 } as const;
 
-// Hedera Network Configuration (Updated to Previewnet)
+// Hedera Network Configuration (Updated to Testnet)
 export const HEDERA_CONFIG = {
-  chainId: Number(import.meta.env.VITE_CHAIN_ID) || 297,
-  networkName: import.meta.env.VITE_NETWORK_NAME || 'Hedera Previewnet',
-  rpcUrl: import.meta.env.VITE_RPC_URL || 'https://previewnet.hashio.io/api',
-  explorerUrl: import.meta.env.VITE_BLOCK_EXPLORER_URL || 'https://hashscan.io/previewnet',
-  currencySymbol: import.meta.env.VITE_CURRENCY_SYMBOL || 'HBAR',
-  mirrorNodeUrl: import.meta.env.VITE_HEDERA_MIRROR_NODE_URL || 'https://previewnet.mirrornode.hedera.com',
+  chainId: Number(import.meta.env.VITE_CHAIN_ID) || 296,
+  networkName: import.meta.env.VITE_NETWORK_NAME || 'Hedera Testnet',
+  rpcUrl: import.meta.env.VITE_RPC_URL || 'https://testnet.hashio.io/api',
+  explorerUrl: import.meta.env.VITE_BLOCK_EXPLORER_URL || 'https://hashscan.io/testnet',
+  nativeCurrency: { name: 'HBAR', symbol: 'HBAR', decimals: 18 },
+  mirrorNodeUrl: import.meta.env.VITE_HEDERA_MIRROR_NODE_URL || 'https://testnet.mirrornode.hedera.com',
 } as const;
 
 // Wallet Configuration
@@ -35,9 +35,12 @@ export const WALLET_CONFIG = {
   sessionTimeout: Number(import.meta.env.VITE_SESSION_TIMEOUT) || 3600000,
 } as const;
 
-// Smart Contract Addresses (Updated for Hedera Previewnet)
+// Smart Contract Addresses (Updated for Hedera Testnet)
 export const CONTRACT_CONFIG = {
-  // DarkPool Perpetual DEX - Main trading contract (Updated)
+  // CompactDarkPoolDEX - New USDC-enabled self-contained trading contract (DEPLOYED on Testnet)
+  compactDarkPoolDEX: import.meta.env.VITE_COMPACT_DARKPOOL_DEX_ADDRESS || '0x7322b80Aa5398d53543930D966c6AE0e9EE2E54E',
+  
+  // DarkPool Perpetual DEX - Legacy trading contract (Backward compatibility)
   darkpoolPerpDEX: import.meta.env.VITE_DARKPOOL_PERP_DEX_ADDRESS || '0xC4D7B5729A9Dca7dfcaCd1BB435bba3d0B559617',
   
   // HederaDarkPoolManager - Event-based management interface (DEPLOYED)
@@ -50,8 +53,8 @@ export const CONTRACT_CONFIG = {
   noirVerifier: import.meta.env.VITE_NOIR_VERIFIER_ADDRESS || '0xD2163E87d7fd20bc91e7B80D4D5AbcBad4Eb0888',
   priceOracle: import.meta.env.VITE_PRICE_ORACLE_ADDRESS || '0xD2163E87d7fd20bc91e7B80D4D5AbcBad4Eb0888',
   
-  // Token Contracts
-  usdcToken: import.meta.env.VITE_USDC_TOKEN_ADDRESS || '0x1b20865c8C1B8B50cC19F54D8Da4873bfFcaD1F3',
+  // Token Contracts (Updated for Hedera Testnet)
+  usdcToken: import.meta.env.VITE_USDC_TOKEN_ADDRESS || '0x340e7949d378C6d6eB1cf7391F5C39b6c826BA9d',
   
   // Legacy contract addresses (kept for backward compatibility)
   trading: import.meta.env.VITE_TRADING_CONTRACT_ADDRESS || '0xC4D7B5729A9Dca7dfcaCd1BB435bba3d0B559617',

@@ -1,4 +1,4 @@
-// DarkPool contract interaction hook for ELLALLE platform
+// DarkPool contract interaction hook for ELLALLE platform - Updated for CompactDarkPoolDEX
 import { CONTRACT_CONFIG } from '@/lib/env';
 import { useCallback, useEffect, useState } from 'react';
 
@@ -11,6 +11,8 @@ interface DarkPoolState {
     paused: boolean;
     marketCount: number;
     owner: string;
+    usdcAddress: string;
+    noirVerifierAddress: string;
   } | null;
   loading: boolean;
   error: string | null;
@@ -18,42 +20,207 @@ interface DarkPoolState {
 
 interface UseDarkPoolReturn extends DarkPoolState {
   connect: () => Promise<void>;
-  deposit: (amount: string) => Promise<string>;
-  withdraw: (amount: string) => Promise<string>;
+  // Native HBAR functions (recommended)
+  depositHBAR: (amount: string) => Promise<string>;
+  withdrawHBAR: (amount: string) => Promise<string>;
+  // USDC functions (DISABLED - Contract doesn't support USDC)
+  depositUSDC: (amount: string) => Promise<string>;
+  withdrawUSDC: (amount: string) => Promise<string>;
   checkBalance: (address: string) => Promise<void>;
   refreshSystemStatus: () => Promise<void>;
   getStoredMarkets: () => Promise<void>;
 }
 
+// Utility function to wait for transaction confirmation
+const waitForTransactionConfirmation = async (provider: any, txHash: string, maxWaitTime: number = 30000): Promise<boolean> => {
+  const startTime = Date.now();
+  
+  while (Date.now() - startTime < maxWaitTime) {
+    try {
+      const receipt = await provider.request({
+        method: 'eth_getTransactionReceipt',
+        params: [txHash],
+      });
+      
+      if (receipt) {
+        console.log('Transaction confirmed:', receipt);
+        return receipt.status === '0x1'; // Success
+      }
+      
+      // Wait 1 second before checking again
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    } catch (error) {
+      console.warn('Error checking transaction status:', error);
+      // Continue waiting
+    }
+  }
+  
+  console.warn('Transaction confirmation timeout after', maxWaitTime, 'ms');
+  return false; // Timeout
+};
+
 // Utility functions for web3 operations
 const toWei = (amount: string): string => {
   const num = parseFloat(amount);
-  return (BigInt(Math.floor(num * 1e18))).toString();
+  return (BigInt(Math.floor(num * 1e6))).toString(); // USDC has 6 decimals
 };
 
-const fromWei = (amountWei: string): string => {
+const fromWei = (amountWei: string, decimals: number = 6): string => {
   try {
     const bigIntValue = BigInt(amountWei);
-    const ethValue = Number(bigIntValue) / 1e18;
-    return ethValue.toFixed(4);
+    const value = Number(bigIntValue) / Math.pow(10, decimals);
+    return value.toFixed(decimals);
   } catch {
-    return '0.0000';
+    return '0.000000';
   }
 };
 
 const toHex = (num: number | bigint): string => `0x${num.toString(16)}`;
 
-// Contract ABI fragments for the functions we need
+// CompactDarkPoolDEX ABI function signatures
 const CONTRACT_ABI = {
-  // HederaDarkPoolManager functions
-  depositToDarkpool: '0xd0d9f0ef',
-  withdrawFromDarkpool: '0x8c7b6fb0',
-  checkDarkPoolAddresses: '0x5c60da1b',
-  getUserDarkPoolBalance: '0x7bb98a68',
-  // DarkpoolPerpDEX functions
-  balanceOf: '0x70a08231',
+  // Native HBAR functions (recommended for stability)
+  deposit: '0xd0e30db0',      // payable deposit()
+  withdraw: '0x2e1a7d4d',     // withdraw(uint256)
+  
+  // USDC functions (may have network stability issues)
+  depositUSDC: '0xf2d5d56b',
+  withdrawUSDC: '0x3ccfd60b',
+  getBalance: '0xf8b2cb4f',
+  
+  // Market functions
+  getMarketSymbols: '0x25b8e7ca',
+  getMarket: '0xa2fb1175',
+  
+  // System functions
   owner: '0x8da5cb5b',
   paused: '0x5c975abb',
+  usdcToken: '0x21a1ba98', // Public getter for usdcToken variable
+  getUSDCAddress: '0x1e83409a', // Custom function (might not work)
+  noirVerifier: '0x8af5e73c', // Public getter for noirVerifier variable
+  getNoirVerifier: '0x12345678', // Custom function (might not work)
+  
+  // Position functions
+  openPosition: '0x15e458b8',
+  closePosition: '0x43a8d127',
+  getUserPositions: '0x44c0e5b1',
+  getPosition: '0x791ac947',
+};
+
+// USDC Token ABI function signatures
+const USDC_ABI = {
+  approve: '0x095ea7b3',
+  allowance: '0xdd62ed3e',
+  balanceOf: '0x70a08231',
+  transfer: '0xa9059cbb',
+};
+
+// Helper function to validate deposit prerequisites
+const validateDepositPrerequisites = async (provider: any, userAddress: string, amount: string) => {
+  console.log('=== VALIDATING DEPOSIT PREREQUISITES ===');
+  
+  const amountUsdc = toWei(amount);
+  const requiredAmount = BigInt(amountUsdc);
+  
+  // Check 1: User USDC Balance
+  const balanceData = encodeFunctionCall(USDC_ABI.balanceOf, [encodeAddress(userAddress)]);
+  const balanceResponse = await provider.request({
+    method: 'eth_call',
+    params: [{ to: CONTRACT_CONFIG.usdcToken, data: balanceData }, 'latest']
+  });
+  const userBalance = BigInt(balanceResponse || '0x0');
+  
+  console.log('✓ User USDC Balance:', {
+    raw: userBalance.toString(),
+    formatted: fromWei(userBalance.toString()),
+    required: fromWei(requiredAmount.toString()),
+    sufficient: userBalance >= requiredAmount
+  });
+  
+  if (userBalance < requiredAmount) {
+    throw new Error(`Insufficient USDC balance: ${fromWei(userBalance.toString())} USDC available, ${fromWei(requiredAmount.toString())} USDC required`);
+  }
+  
+  // Check 2: USDC Allowance
+  const allowanceData = encodeFunctionCall(USDC_ABI.allowance, [
+    encodeAddress(userAddress),
+    encodeAddress(CONTRACT_CONFIG.compactDarkPoolDEX)
+  ]);
+  const allowanceResponse = await provider.request({
+    method: 'eth_call',
+    params: [{ to: CONTRACT_CONFIG.usdcToken, data: allowanceData }, 'latest']
+  });
+  const allowance = BigInt(allowanceResponse || '0x0');
+  
+  console.log('✓ USDC Allowance:', {
+    raw: allowance.toString(),
+    formatted: fromWei(allowance.toString()),
+    required: fromWei(requiredAmount.toString()),
+    sufficient: allowance >= requiredAmount
+  });
+  
+  // Note: Don't throw error here - let the caller handle insufficient allowance
+  // The depositUSDC function will handle approval if needed
+  
+  // Check 3: Contract Paused Status
+  const pausedData = encodeFunctionCall(CONTRACT_ABI.paused, []);
+  console.log('Making paused status call with data:', pausedData);
+  
+  let isPaused = false;
+  try {
+    const pausedResponse = await provider.request({
+      method: 'eth_call',
+      params: [{ to: CONTRACT_CONFIG.compactDarkPoolDEX, data: pausedData }, 'latest']
+    });
+    console.log('Raw paused response:', pausedResponse);
+    
+    isPaused = pausedResponse && parseInt(pausedResponse, 16) !== 0;
+    
+    console.log('✓ Contract Status:', {
+      paused: isPaused,
+      address: CONTRACT_CONFIG.compactDarkPoolDEX,
+      rawResponse: pausedResponse,
+      parsedValue: pausedResponse ? parseInt(pausedResponse, 16) : 'null'
+    });
+    
+    if (isPaused) {
+      throw new Error('CompactDarkPoolDEX contract is currently paused');
+    }
+  } catch (pausedError: any) {
+    console.error('Failed to check paused status:', pausedError);
+    console.log('Continuing anyway, but contract might be paused...');
+  }
+
+  // Test if contract exists by checking code
+  try {
+    const contractCode = await provider.request({
+      method: 'eth_getCode',
+      params: [CONTRACT_CONFIG.compactDarkPoolDEX, 'latest']
+    });
+    console.log('✓ Contract Code Check:', {
+      exists: contractCode && contractCode !== '0x',
+      codeLength: contractCode ? contractCode.length : 0
+    });
+    
+    if (!contractCode || contractCode === '0x') {
+      throw new Error('CompactDarkPoolDEX contract not found at the specified address');
+    }
+  } catch (codeError: any) {
+    console.error('Contract code check failed:', codeError);
+    throw new Error('Failed to verify contract existence');
+  }// Check 4: Amount Validation
+  if (requiredAmount <= 0) {
+    throw new Error('Deposit amount must be greater than 0');
+  }
+  
+  console.log('✅ All prerequisites validated successfully');
+  
+  return {
+    userBalance,
+    allowance,
+    amountUsdc: requiredAmount,
+    isPaused
+  };
 };
 
 // Encode function call with parameters
@@ -61,14 +228,25 @@ const encodeFunctionCall = (signature: string, params: string[] = []): string =>
   if (params.length === 0) {
     return signature;
   }
-  // For simple cases, just append padded parameters
+  
   const paddedParams = params.map(param => {
     if (param.startsWith('0x')) {
       return param.slice(2).padStart(64, '0');
     }
     return param.padStart(64, '0');
   }).join('');
+  
   return signature + paddedParams;
+};
+
+// Encode address parameter
+const encodeAddress = (address: string): string => {
+  return address.toLowerCase().replace('0x', '').padStart(64, '0');
+};
+
+// Encode uint256 parameter  
+const encodeUint256 = (value: string): string => {
+  return BigInt(value).toString(16).padStart(64, '0');
 };
 
 export const useDarkPool = (): UseDarkPoolReturn => {
@@ -76,14 +254,16 @@ export const useDarkPool = (): UseDarkPoolReturn => {
     isConnected: false,
     balance: null,
     markets: [
-      'BTC/USD', 'ETH/USD', 'SOL/USD', 'HBAR/USD',
-      'ADA/USD', 'AVAX/USD', 'DOT/USD', 'MATIC/USD'
+      'BTC/USDC', 'ETH/USDC', 'SOL/USDC', 'HBAR/USDC',
+      'ADA/USDC', 'AVAX/USDC', 'DOT/USDC', 'MATIC/USDC'
     ],
     systemStatus: {
       exists: true,
       paused: false,
       marketCount: 8,
-      owner: '0xD42ba3BB3B2908dc10E499D318Ab867359ca9743',
+      owner: '0x12C6eD6aC01d414b12aCA793aa4bDaeDE6AA9358',
+      usdcAddress: '0x340e7949d378C6d6eB1cf7391F5C39b6c826BA9d',
+      noirVerifierAddress: '0x0000000000000000000000000000000000000000',
     },
     loading: false,
     error: null,
@@ -113,7 +293,7 @@ export const useDarkPool = (): UseDarkPoolReturn => {
 
       // Check network
       const chainId = await provider.request({ method: 'eth_chainId' });
-      const expectedChainId = toHex(297); // Hedera Previewnet
+      const expectedChainId = toHex(296); // Hedera Testnet
       
       if (chainId !== expectedChainId) {
         try {
@@ -129,14 +309,14 @@ export const useDarkPool = (): UseDarkPoolReturn => {
               method: 'wallet_addEthereumChain',
               params: [{
                 chainId: expectedChainId,
-                chainName: 'Hedera Previewnet',
+                chainName: 'Hedera Testnet',
                 nativeCurrency: {
                   name: 'HBAR',
                   symbol: 'HBAR',
                   decimals: 18,
                 },
-                rpcUrls: ['https://previewnet.hashio.io/api'],
-                blockExplorerUrls: ['https://hashscan.io/previewnet'],
+                rpcUrls: ['https://testnet.hashio.io/api'],
+                blockExplorerUrls: ['https://hashscan.io/testnet'],
               }],
             });
           } else {
@@ -165,71 +345,508 @@ export const useDarkPool = (): UseDarkPoolReturn => {
     }
   }, []);
 
-  // Deposit HBAR to DarkPool via DarkpoolPerpDEX contract directly
-  const deposit = useCallback(async (amount: string): Promise<string> => {
+  // Deposit HBAR to CompactDarkPoolDEX (Native Token - Stable)
+  const depositHBAR = useCallback(async (amount: string): Promise<string> => {
     setState(prev => ({ ...prev, loading: true, error: null }));
     
     try {
       const provider = getProvider();
       const accounts = await provider.request({ method: 'eth_accounts' });
-      
       if (!accounts || accounts.length === 0) {
-        throw new Error('No wallet connected');
+        throw new Error('No connected accounts found');
       }
-
-      // Convert amount to wei (hex)
-      const amountWei = toWei(amount);
+      
+      console.log('Starting HBAR deposit process...');
+      console.log('Deposit details:', {
+        amount,
+        account: accounts[0],
+        contract: CONTRACT_CONFIG.compactDarkPoolDEX
+      });
+      
+      // Convert amount to wei (HBAR has 18 decimals like ETH)
+      const amountWei = (parseFloat(amount) * 1e18).toString();
       const amountHex = `0x${BigInt(amountWei).toString(16)}`;
       
-      console.log('Depositing:', { amount, amountWei, amountHex });
-
-      // Get current gas price from network
-      const gasPrice = await provider.request({ method: 'eth_gasPrice' });
+      console.log('Amount in wei:', amountWei);
+      console.log('Amount in hex:', amountHex);
       
-      // Call d0e30db0 (deposit()) on DarkpoolPerpDEX contract directly
+      // Prepare transaction parameters
       const txParams = {
         from: accounts[0],
-        to: CONTRACT_CONFIG.darkpoolPerpDEX, // Use main contract instead of manager
+        to: CONTRACT_CONFIG.compactDarkPoolDEX,
         value: amountHex,
-        data: '0xd0e30db0', // deposit() function signature
-        gas: toHex(300000), // More reasonable gas limit
-        gasPrice: gasPrice, // Use network gas price
+        data: CONTRACT_ABI.deposit, // Just the function signature for payable deposit()
       };
       
-      console.log('Transaction params:', txParams);
+      console.log('HBAR deposit transaction params:', txParams);
       
+      // Send transaction (no gas estimation needed for simple payable function)
+      console.log('Sending HBAR deposit transaction...');
       const txHash = await provider.request({
         method: 'eth_sendTransaction',
         params: [txParams],
       });
 
-      console.log('Deposit transaction hash:', txHash);
+      console.log('HBAR deposit transaction hash:', txHash);
 
-      // Wait for transaction confirmation and refresh balance
-      setTimeout(async () => {
+      // Wait for transaction confirmation and refresh balance immediately
+      console.log('Waiting for transaction confirmation...');
+      const confirmed = await waitForTransactionConfirmation(provider, txHash, 15000); // 15 second timeout
+      
+      if (confirmed) {
+        console.log('✅ Transaction confirmed, refreshing balance...');
+        // Refresh balance immediately after confirmation
         try {
           await checkBalance(accounts[0]);
-        } catch (error) {
-          console.error('Error refreshing balance after deposit:', error);
+          console.log('✅ Balance refreshed successfully after HBAR deposit');
+        } catch (balanceError) {
+          console.error('❌ Error refreshing balance after deposit:', balanceError);
+          // Fallback: Try again after a short delay
+          setTimeout(async () => {
+            try {
+              await checkBalance(accounts[0]);
+            } catch (retryError) {
+              console.error('❌ Retry balance refresh also failed:', retryError);
+            }
+          }, 2000);
         }
-      }, 3000);
+      } else {
+        console.log('⚠️ Transaction confirmation timeout, trying balance refresh anyway...');
+        // Even if confirmation times out, try to refresh balance
+        setTimeout(async () => {
+          try {
+            await checkBalance(accounts[0]);
+          } catch (error) {
+            console.error('❌ Error refreshing balance after timeout:', error);
+          }
+        }, 3000);
+      }
       
       setState(prev => ({ ...prev, loading: false }));
       return txHash;
       
     } catch (error: any) {
-      console.error('Deposit error:', error);
-      setState(prev => ({
-        ...prev,
-        loading: false,
-        error: error.message || 'Deposit failed',
-      }));
-      throw error;
+      console.error('HBAR deposit error:', error);
+      
+      let errorMessage = 'HBAR deposit failed';
+      if (error.code === 4001) {
+        errorMessage = 'Transaction was cancelled by user';
+      } else if (error.message?.includes('insufficient')) {
+        errorMessage = 'Insufficient HBAR balance or gas fees';
+      } else if (error.message?.includes('CONTRACT_REVERT_EXECUTED')) {
+        errorMessage = 'Contract rejected deposit: Contract may be paused';
+      } else if (error.message) {
+        errorMessage = `HBAR deposit failed: ${error.message}`;
+      }
+      
+      setState(prev => ({ ...prev, loading: false, error: errorMessage }));
+      throw new Error(errorMessage);
     }
   }, []);
 
-  // Withdraw from DarkPool via DarkpoolPerpDEX contract directly
-  const withdraw = useCallback(async (amount: string): Promise<string> => {
+  // Withdraw HBAR from CompactDarkPoolDEX (Native Token - Stable)
+  const withdrawHBAR = useCallback(async (amount: string): Promise<string> => {
+    setState(prev => ({ ...prev, loading: true, error: null }));
+    
+    try {
+      const provider = getProvider();
+      const accounts = await provider.request({ method: 'eth_accounts' });
+      if (!accounts || accounts.length === 0) {
+        throw new Error('No connected accounts found');
+      }
+      
+      console.log('Starting HBAR withdrawal process...');
+      console.log('Withdrawal details:', {
+        amount,
+        account: accounts[0],
+        contract: CONTRACT_CONFIG.compactDarkPoolDEX
+      });
+      
+      // Convert amount to wei (HBAR has 18 decimals)
+      const amountWei = (parseFloat(amount) * 1e18).toString();
+      
+      console.log('Amount in wei:', amountWei);
+      
+      // Encode the withdraw function call
+      const withdrawData = encodeFunctionCall(CONTRACT_ABI.withdraw, [encodeUint256(amountWei)]);
+      
+      // Prepare transaction parameters
+      const txParams = {
+        from: accounts[0],
+        to: CONTRACT_CONFIG.compactDarkPoolDEX,
+        value: '0x0',
+        data: withdrawData,
+      };
+      
+      console.log('HBAR withdrawal transaction params:', txParams);
+      
+      // Send transaction
+      console.log('Sending HBAR withdrawal transaction...');
+      const txHash = await provider.request({
+        method: 'eth_sendTransaction',
+        params: [txParams],
+      });
+
+      console.log('HBAR withdrawal transaction hash:', txHash);
+
+      // Wait for transaction confirmation and refresh balance immediately
+      console.log('Waiting for withdrawal transaction confirmation...');
+      const confirmed = await waitForTransactionConfirmation(provider, txHash, 15000); // 15 second timeout
+      
+      if (confirmed) {
+        console.log('Withdrawal confirmed, refreshing balance...');
+        // Refresh balance immediately after confirmation
+        try {
+          await checkBalance(accounts[0]);
+          console.log('Balance refreshed successfully after HBAR withdrawal');
+        } catch (balanceError) {
+          console.error('Error refreshing balance after withdrawal:', balanceError);
+          // Fallback: Try again after a short delay
+          setTimeout(async () => {
+            try {
+              await checkBalance(accounts[0]);
+            } catch (retryError) {
+              console.error('Retry balance refresh also failed:', retryError);
+            }
+          }, 2000);
+        }
+      } else {
+        console.log('Withdrawal confirmation timeout, trying balance refresh anyway...');
+        // Even if confirmation times out, try to refresh balance
+        setTimeout(async () => {
+          try {
+            await checkBalance(accounts[0]);
+          } catch (error) {
+            console.error('Error refreshing balance after timeout:', error);
+          }
+        }, 3000);
+      }
+      
+      setState(prev => ({ ...prev, loading: false }));
+      return txHash;
+      
+    } catch (error: any) {
+      console.error('HBAR withdrawal error:', error);
+      
+      let errorMessage = 'HBAR withdrawal failed';
+      if (error.code === 4001) {
+        errorMessage = 'Transaction was cancelled by user';
+      } else if (error.message?.includes('Insufficient balance')) {
+        errorMessage = 'Insufficient HBAR balance in DarkPool';
+      } else if (error.message?.includes('Balance locked')) {
+        errorMessage = 'HBAR balance is locked in positions';
+      } else if (error.message?.includes('CONTRACT_REVERT_EXECUTED')) {
+        errorMessage = 'Contract rejected withdrawal: Check balance and locked funds';
+      } else if (error.message) {
+        errorMessage = `HBAR withdrawal failed: ${error.message}`;
+      }
+      
+      setState(prev => ({ ...prev, loading: false, error: errorMessage }));
+      throw new Error(errorMessage);
+    }
+  }, []);
+
+  // Deposit USDC to CompactDarkPoolDEX (May have network stability issues)
+  const depositUSDC = useCallback(async (amount: string): Promise<string> => {
+    setState(prev => ({ ...prev, loading: true, error: null }));
+    
+    try {
+      throw new Error('USDC deposits are not supported by the current contract. Your deployed CompactDarkPoolDEX contract at 0x12C6eD6aC01d414b12aCA793aa4bDaeDE6AA9358 only supports HBAR deposits. Please use "Deposit HBAR" instead.');
+    } catch (error: any) {
+      console.error('USDC deposit not supported:', error);
+      setState(prev => ({ ...prev, loading: false, error: error.message }));
+      throw error;
+    }
+  }, []);
+      if (isNaN(amountNum) || amountNum <= 0) {
+        throw new Error('Invalid deposit amount');
+      }
+
+      // Step 1: Comprehensive validation
+      console.log('=== STARTING USDC DEPOSIT VALIDATION ===');
+      const validationResult = await validateDepositPrerequisites(provider, accounts[0], amount);
+      
+      const { userBalance, allowance, amountUsdc: requiredAmount } = validationResult;
+
+      // Step 2: Approve USDC spending if needed
+      if (allowance < requiredAmount) {
+        console.log('Approving USDC spending...');
+        
+        // Use maximum uint256 value for unlimited approval to avoid future approvals
+        const maxApproval = '0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff';
+        
+        const approveData = encodeFunctionCall(USDC_ABI.approve, [
+          encodeAddress(CONTRACT_CONFIG.compactDarkPoolDEX),
+          maxApproval.replace('0x', '').padStart(64, 'f')
+        ]);
+        
+        const approveTxParams = {
+          from: accounts[0],
+          to: CONTRACT_CONFIG.usdcToken,
+          value: '0x0',
+          data: approveData,
+        };
+
+        console.log('Approve transaction params:', approveTxParams);
+
+        // Send approval transaction
+        try {
+          console.log('Sending USDC approval transaction (unlimited allowance)...');
+          const approveTxHash = await provider.request({
+            method: 'eth_sendTransaction',
+            params: [approveTxParams],
+          });
+
+          console.log('USDC approval transaction hash:', approveTxHash);
+          
+          // Wait longer for approval transaction to be mined on Hedera
+          console.log('Waiting for approval confirmation...');
+          await new Promise(resolve => setTimeout(resolve, 8000));
+          
+          // Re-validate after approval
+          console.log('Re-validating after approval...');
+          const newValidationResult = await validateDepositPrerequisites(provider, accounts[0], amount);
+          
+          if (newValidationResult.allowance < requiredAmount) {
+            console.warn('Allowance verification failed, proceeding anyway...');
+          }
+          
+        } catch (approvalError: any) {
+          console.error('USDC approval failed:', approvalError);
+          
+          let approvalErrorMessage = 'USDC approval failed';
+          if (approvalError.code === 4001) {
+            approvalErrorMessage = 'USDC approval was cancelled by user';
+          } else if (approvalError.message?.includes('400')) {
+            approvalErrorMessage = 'USDC approval failed - transaction rejected by network';
+          } else if (approvalError.message?.includes('insufficient')) {
+            approvalErrorMessage = 'Insufficient HBAR for gas fees';
+          } else if (approvalError.message) {
+            approvalErrorMessage = `USDC approval failed: ${approvalError.message}`;
+          }
+          
+          throw new Error(approvalErrorMessage);
+        }
+      }
+
+      // Step 3: Deposit USDC to CompactDarkPoolDEX
+      console.log('Preparing deposit transaction...');
+      
+      const depositData = encodeFunctionCall(CONTRACT_ABI.depositUSDC, [encodeUint256(requiredAmount.toString())]);
+      
+      // Verify the transaction data is correctly formatted
+      console.log('=== TRANSACTION DATA VERIFICATION ===');
+      console.log('Function signature (depositUSDC):', CONTRACT_ABI.depositUSDC);
+      console.log('Amount (uint256):', requiredAmount.toString());
+      console.log('Encoded amount:', encodeUint256(requiredAmount.toString()));
+      console.log('Full transaction data:', depositData);
+      console.log('Data length:', depositData.length, '(should be 74: 10 for signature + 64 for amount)');
+      
+      // Verify contract addresses
+      console.log('=== CONTRACT ADDRESS VERIFICATION ===');
+      console.log('CompactDarkPoolDEX:', CONTRACT_CONFIG.compactDarkPoolDEX);
+      console.log('USDC Token:', CONTRACT_CONFIG.usdcToken);
+      console.log('From address:', accounts[0]);
+      
+      console.log('Deposit transaction details:', {
+        from: accounts[0],
+        to: CONTRACT_CONFIG.compactDarkPoolDEX,
+        data: depositData,
+        amountUsdc: requiredAmount.toString(),
+        userBalance: userBalance.toString(),
+        allowance: allowance.toString()
+      });
+
+      const txParams: any = {
+        from: accounts[0],
+        to: CONTRACT_CONFIG.compactDarkPoolDEX,
+        value: '0x0', // No ETH value for USDC deposit
+        data: depositData,
+      };
+      
+      console.log('Deposit transaction params:', txParams);
+
+      // Try gas estimation first to catch revert errors
+      try {
+        console.log('Estimating gas for deposit transaction...');
+        const gasEstimate = await provider.request({
+          method: 'eth_estimateGas',
+          params: [txParams],
+        });
+        console.log('Gas estimate successful:', gasEstimate);
+        
+        // Add some buffer to gas limit
+        txParams.gas = toHex(Math.floor(parseInt(gasEstimate, 16) * 1.3));
+      } catch (gasError: any) {
+        console.error('Gas estimation failed:', gasError);
+        
+        // === DETAILED CONTRACT STATE CHECK ===
+        console.log('=== CHECKING WHY GAS ESTIMATION FAILED ===');
+        
+        try {
+          // Check contract owner
+          const ownerData = encodeFunctionCall(CONTRACT_ABI.owner, []);
+          const ownerResponse = await provider.request({
+            method: 'eth_call',
+            params: [{ to: CONTRACT_CONFIG.compactDarkPoolDEX, data: ownerData }, 'latest']
+          });
+          console.log('Contract owner:', ownerResponse);
+          
+          // Check USDC token address in contract
+          const usdcAddressData = encodeFunctionCall(CONTRACT_ABI.usdcToken, []);
+          const usdcAddressResponse = await provider.request({
+            method: 'eth_call',
+            params: [{ to: CONTRACT_CONFIG.compactDarkPoolDEX, data: usdcAddressData }, 'latest']
+          });
+          console.log('Contract USDC address (via usdcToken()):', usdcAddressResponse);
+          console.log('Expected USDC address:', CONTRACT_CONFIG.usdcToken);
+          
+          // Double-check paused status with more detail
+          const pausedData = encodeFunctionCall(CONTRACT_ABI.paused, []);
+          const pausedResponse = await provider.request({
+            method: 'eth_call',
+            params: [{ to: CONTRACT_CONFIG.compactDarkPoolDEX, data: pausedData }, 'latest']
+          });
+          const contractPaused = pausedResponse && parseInt(pausedResponse, 16) !== 0;
+          console.log('PAUSED STATUS CHECK:', {
+            raw: pausedResponse,
+            parsed: contractPaused,
+            hexValue: pausedResponse ? `0x${parseInt(pausedResponse, 16).toString(16)}` : 'null'
+          });
+          
+          if (contractPaused) {
+            throw new Error('❌ Contract is PAUSED! Cannot deposit while contract is paused. This is likely why gas estimation failed.');
+          }
+          
+        } catch (stateError: any) {
+          console.error('Failed to check detailed contract state:', stateError);
+        }
+        
+        // Try to get more detailed error by simulating the call
+        console.log('Attempting to simulate transaction to get detailed error...');
+        try {
+          const simulationResult = await provider.request({
+            method: 'eth_call',
+            params: [txParams, 'latest'],
+          });
+          console.log('Simulation result:', simulationResult);
+        } catch (simulationError: any) {
+          console.error('Simulation error:', simulationError);
+          
+          // Try to decode the error
+          if (simulationError.data) {
+            console.log('Error data:', simulationError.data);
+            // Extract the hex data if it's in a nested structure
+            const errorData = typeof simulationError.data === 'string' 
+              ? simulationError.data 
+              : simulationError.data.data || simulationError.data.message || '';
+            
+            console.log('Extracted error data:', errorData);
+            
+            // Common Solidity error signatures
+            if (typeof errorData === 'string') {
+              if (errorData.includes('08c379a0')) {
+                console.log('Contract reverted with Error(string)');
+              } else if (errorData.includes('4e487b71')) {
+                console.log('Contract reverted with Panic(uint256)');
+              } else if (errorData === '0x' || errorData === '') {
+                console.log('Contract reverted without specific error data');
+              } else {
+                console.log('Contract reverted with custom error:', errorData);
+              }
+            }
+          }
+        }
+        
+        let gasErrorMessage = 'Transaction will fail - gas estimation failed';
+        if (gasError.message?.includes('CONTRACT_REVERT_EXECUTED')) {
+          gasErrorMessage = 'Contract rejected transaction: The contract function will revert. Check if contract is paused or function parameters are correct.';
+        } else if (gasError.message?.includes('Internal JSON-RPC error')) {
+          gasErrorMessage = 'Network error during gas estimation. The transaction may fail due to contract state or insufficient funds.';
+        } else if (gasError.message?.includes('insufficient')) {
+          gasErrorMessage = 'Insufficient funds for transaction';
+        } else if (gasError.message?.includes('paused')) {
+          gasErrorMessage = 'Contract is paused';
+        } else if (gasError.message?.includes('Invalid amount')) {
+          gasErrorMessage = 'Invalid deposit amount';
+        } else if (gasError.message?.includes('Transfer failed')) {
+          gasErrorMessage = 'USDC transfer would fail - check allowance and balance';
+        } else if (gasError.message) {
+          gasErrorMessage = `Gas estimation failed: ${gasError.message}`;
+        }
+        
+        // Let's try the transaction anyway if it's just a gas estimation issue
+        console.log('⚠️  Gas estimation failed, but proceeding with transaction...');
+        console.log('Setting manual gas limit...');
+        txParams.gas = toHex(200000); // Set a reasonable gas limit manually
+      }
+
+      // Send deposit transaction
+      try {
+        console.log('Sending USDC deposit transaction...');
+        const txHash = await provider.request({
+          method: 'eth_sendTransaction',
+          params: [txParams],
+        });
+
+        console.log('USDC deposit transaction hash:', txHash);
+
+        // Wait for transaction confirmation and refresh balance
+        setTimeout(async () => {
+          try {
+            await checkBalance(accounts[0]);
+          } catch (error) {
+            console.error('Error refreshing balance after deposit:', error);
+          }
+        }, 5000); // Wait longer for Hedera transaction processing
+        
+        setState(prev => ({ ...prev, loading: false }));
+        return txHash;
+        
+      } catch (depositError: any) {
+        console.error('USDC deposit transaction failed:', depositError);
+        
+        let depositErrorMessage = 'USDC deposit transaction failed';
+        if (depositError.code === 4001) {
+          depositErrorMessage = 'USDC deposit was cancelled by user';
+        } else if (depositError.message?.includes('CONTRACT_REVERT_EXECUTED')) {
+          depositErrorMessage = 'Contract rejected deposit: Insufficient allowance, balance, or contract paused';
+        } else if (depositError.message?.includes('400')) {
+          depositErrorMessage = 'USDC deposit failed - transaction rejected by network';
+        } else if (depositError.message?.includes('insufficient')) {
+          depositErrorMessage = 'Insufficient HBAR for gas fees or USDC balance';
+        } else if (depositError.message) {
+          depositErrorMessage = `USDC deposit failed: ${depositError.message}`;
+        }
+        
+        throw new Error(depositErrorMessage);
+      }
+      
+    } catch (error: any) {
+      console.error('USDC deposit error:', error);
+      
+      let errorMessage = 'USDC deposit failed';
+      if (error.code === 4001) {
+        errorMessage = 'Transaction was cancelled by user';
+      } else if (error.message?.includes('insufficient')) {
+        errorMessage = 'Insufficient USDC balance or gas fees';
+      } else if (error.message?.includes('approval')) {
+        errorMessage = `USDC approval failed: ${error.message}`;
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
+      setState(prev => ({
+        ...prev,
+        loading: false,
+        error: errorMessage,
+      }));
+      throw new Error(errorMessage);
+    }
+  }, []);
+
+  // Withdraw USDC from CompactDarkPoolDEX
+  const withdrawUSDC = useCallback(async (amount: string): Promise<string> => {
     setState(prev => ({ ...prev, loading: true, error: null }));
     
     try {
@@ -240,35 +857,49 @@ export const useDarkPool = (): UseDarkPoolReturn => {
         throw new Error('No wallet connected');
       }
 
-      // Convert amount to wei and encode as parameter
-      const amountWei = toWei(amount);
-      const amountHex = BigInt(amountWei).toString(16).padStart(64, '0');
-      
-      console.log('Withdrawing:', { amount, amountWei, amountHex });
+      console.log('Starting USDC withdrawal process...');
 
-      // Get current gas price from network
-      const gasPrice = await provider.request({ method: 'eth_gasPrice' });
-      
-      // Call withdraw(uint256 amount) on DarkpoolPerpDEX
+      // Validate amount
+      const amountNum = parseFloat(amount);
+      if (isNaN(amountNum) || amountNum <= 0) {
+        throw new Error('Invalid withdrawal amount');
+      }
+
+      // Convert amount to USDC units (6 decimals)
+      const amountUsdc = toWei(amount);
+      const data = encodeFunctionCall(CONTRACT_ABI.withdrawUSDC, [encodeUint256(amountUsdc)]);
+
       const txParams = {
         from: accounts[0],
-        to: CONTRACT_CONFIG.darkpoolPerpDEX, // Use main contract
+        to: CONTRACT_CONFIG.compactDarkPoolDEX,
         value: '0x0',
-        data: '0x2e1a7d4d' + amountHex, // withdraw() function with amount parameter
+        data: data,
         gas: toHex(300000),
-        gasPrice: gasPrice, // Use network gas price
+        gasPrice: toHex(20000000000),
       };
-      
+
       console.log('Withdrawal transaction params:', txParams);
-      
+
+      // Estimate gas
+      try {
+        const gasEstimate = await provider.request({
+          method: 'eth_estimateGas',
+          params: [txParams],
+        });
+        txParams.gas = toHex(Math.floor(parseInt(gasEstimate, 16) * 1.2));
+      } catch (gasError: any) {
+        console.error('Gas estimation failed:', gasError);
+        throw new Error(`Transaction validation failed: ${gasError.message}`);
+      }
+
       const txHash = await provider.request({
         method: 'eth_sendTransaction',
         params: [txParams],
       });
 
-      console.log('Withdrawal transaction hash:', txHash);
+      console.log('USDC withdrawal transaction hash:', txHash);
 
-      // Wait for transaction confirmation and refresh balance
+      // Refresh balance after withdrawal
       setTimeout(async () => {
         try {
           await checkBalance(accounts[0]);
@@ -276,200 +907,401 @@ export const useDarkPool = (): UseDarkPoolReturn => {
           console.error('Error refreshing balance after withdrawal:', error);
         }
       }, 3000);
-      
+
       setState(prev => ({ ...prev, loading: false }));
       return txHash;
-      
+
     } catch (error: any) {
-      console.error('Withdrawal error:', error);
+      console.error('USDC withdrawal error:', error);
+      
+      let errorMessage = 'USDC withdrawal failed';
+      if (error.code === 4001) {
+        errorMessage = 'Transaction was cancelled by user';
+      } else if (error.message?.includes('insufficient')) {
+        errorMessage = 'Insufficient DarkPool balance';
+      } else if (error.message?.includes('locked')) {
+        errorMessage = 'Balance is locked in open positions';
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+
       setState(prev => ({
         ...prev,
         loading: false,
-        error: error.message || 'Withdrawal failed',
+        error: errorMessage,
       }));
-      throw error;
+      throw new Error(errorMessage);
     }
   }, []);
 
-  // Check user balance from the DarkPool contract directly
+  // Check balance for a specific address using CompactDarkPoolDEX
   const checkBalance = useCallback(async (address: string) => {
     if (!address) return;
+    
+    setState(prev => ({ ...prev, loading: true, error: null }));
     
     try {
       const provider = getProvider();
       
-      // Call f8b2cb4f (getUserBalance(address)) on DarkpoolPerpDEX contract
-      const userAddressHex = address.toLowerCase().slice(2).padStart(64, '0');
-      const callData = '0xf8b2cb4f' + userAddressHex; // getUserBalance function
+      console.log('=== CHECKING BALANCE ON TESTNET ===');
+      console.log('Address:', address);
+      console.log('Contract:', CONTRACT_CONFIG.compactDarkPoolDEX);
+      console.log('Expected Contract:', '0x12C6eD6aC01d414b12aCA793aa4bDaeDE6AA9358');
       
-      console.log('Checking balance for:', address);
-      console.log('Call data:', callData);
+      // First verify we're calling the right contract
+      if (CONTRACT_CONFIG.compactDarkPoolDEX !== '0x12C6eD6aC01d414b12aCA793aa4bDaeDE6AA9358') {
+        console.warn('⚠️ Contract address mismatch!');
+        console.log('CONFIG says:', CONTRACT_CONFIG.compactDarkPoolDEX);
+        console.log('Expected:', '0x12C6eD6aC01d414b12aCA793aa4bDaeDE6AA9358');
+      }
       
-      const result = await provider.request({
-        method: 'eth_call',
-        params: [{
-          to: CONTRACT_CONFIG.darkpoolPerpDEX, // Use main contract
-          data: callData,
-        }, 'latest'],
+      // Check if contract exists at the expected address
+      const contractCode = await provider.request({
+        method: 'eth_getCode',
+        params: ['0x12C6eD6aC01d414b12aCA793aa4bDaeDE6AA9358', 'latest']
       });
       
-      console.log('Balance call result:', result);
+      console.log('Contract exists check:', {
+        address: '0x12C6eD6aC01d414b12aCA793aa4bDaeDE6AA9358',
+        exists: contractCode && contractCode !== '0x',
+        codeLength: contractCode ? contractCode.length : 0,
+        codePreview: contractCode ? contractCode.slice(0, 20) + '...' : 'NO CODE'
+      });
       
-      if (result && result !== '0x' && result.length >= 130) { // Must have at least 64 bytes for two uint256 values
-        // Parse the result - expecting tuple (uint256, uint256) for (available, locked)
-        const balanceData = result.slice(2); // Remove 0x prefix
-        
-        // Extract first 32 bytes (available balance)
-        const availableHex = '0x' + balanceData.slice(0, 64);
-        const availableWei = BigInt(availableHex).toString();
-        const availableEth = fromWei(availableWei);
-        
-        // Extract second 32 bytes (locked balance) 
-        const lockedHex = '0x' + balanceData.slice(64, 128);
-        const lockedWei = BigInt(lockedHex).toString();
-        const lockedEth = fromWei(lockedWei);
-        
-        setState(prev => ({
-          ...prev,
-          balance: { 
-            available: availableEth, 
-            locked: lockedEth
-          },
-          error: null, // Clear any previous errors
-        }));
-        
-        console.log('Balance updated:', { available: availableEth, locked: lockedEth }, 'HBAR');
-        
-        // Return the balance for immediate use
-        return { available: availableEth, locked: lockedEth };
-      } else {
-        // No balance or first time user
-        const defaultBalance = { available: '0.0000', locked: '0.0000' };
-        setState(prev => ({
-          ...prev,
-          balance: defaultBalance,
-          error: null,
-        }));
-        console.log('No balance found, setting to default');
-        return defaultBalance;
+      if (!contractCode || contractCode === '0x') {
+        throw new Error(`CompactDarkPoolDEX contract not found at 0x12C6eD6aC01d414b12aCA793aa4bDaeDE6AA9358`);
       }
+      
+      // Try multiple possible function signatures for getBalance
+      const possibleSignatures = [
+        { sig: '0xf8b2cb4f', name: 'getBalance(address)', hasParam: true },
+        { sig: '0x70a08231', name: 'balanceOf(address)', hasParam: true },
+        { sig: '0x12065fe0', name: 'getBalance()', hasParam: false },
+        { sig: '0x27e235e3', name: 'balances(address)', hasParam: true },
+        { sig: '0xb69ef8a8', name: 'balance()', hasParam: false },
+      ];
+      
+      let result = null;
+      let usedSignature = null;
+      let usedName = null;
+      
+      // Try each signature until one works
+      for (const { sig, name, hasParam } of possibleSignatures) {
+        try {
+          console.log(`🔍 Trying ${name} (${sig})`);
+          
+          const data = hasParam ? 
+            encodeFunctionCall(sig, [encodeAddress(address)]) : 
+            sig;
+          
+          console.log('Call data:', data);
+          
+          const testResult = await provider.request({
+            method: 'eth_call',
+            params: [{
+              to: '0x12C6eD6aC01d414b12aCA793aa4bDaeDE6AA9358',
+              data: data,
+            }, 'latest'],
+          });
+          
+          console.log(`Result for ${name}:`, testResult);
+          
+          if (testResult && testResult !== '0x' && testResult.length > 2) {
+            result = testResult;
+            usedSignature = sig;
+            usedName = name;
+            console.log(`✅ SUCCESS: Got result with ${name} (${sig})`);
+            break;
+          } else {
+            console.log(`❌ No data returned for ${name}`);
+          }
+        } catch (error) {
+          console.log(`❌ ${name} failed:`, error);
+        }
+      }
+      
+      if (!result) {
+        console.log('❌ All function signatures failed!');
+        throw new Error('Contract exists but none of the balance function signatures worked. The contract might use a different ABI.');
+      }
+      
+      console.log('✅ FINAL RESULT:', result);
+      console.log('✅ Used function:', usedName);
+      console.log('✅ Signature:', usedSignature);
+      
+      if (result && result !== '0x') {
+        // Parse the result based on which signature worked
+        let available = '0.000000';
+        let locked = '0.000000';
+        
+        console.log('🔄 Parsing result...');
+        console.log('Result length:', result.length);
+        console.log('Result data:', result);
+        
+        // Try to parse as a single balance value first
+        if (result.length === 66) { // 0x + 64 hex chars = 32 bytes = uint256
+          const balanceWei = BigInt(result);
+          available = (Number(balanceWei) / 1e18).toFixed(6);
+          console.log('📊 Single uint256 balance:', {
+            raw: result,
+            balanceWei: balanceWei.toString(),
+            available,
+            availableHBAR: available + ' HBAR'
+          });
+        } else if (result.length >= 130) { // Multiple return values
+          const rawAvailable = result.slice(2, 66); // First 32 bytes
+          const rawLocked = result.slice(66, 130); // Second 32 bytes
+          
+          console.log('📊 Multiple values detected:');
+          console.log('Raw available (hex):', rawAvailable);
+          console.log('Raw locked (hex):', rawLocked);
+          
+          // Convert from wei to HBAR (18 decimals)
+          const availableWei = BigInt('0x' + rawAvailable);
+          const lockedWei = BigInt('0x' + rawLocked);
+          
+          available = (Number(availableWei) / 1e18).toFixed(6);
+          locked = (Number(lockedWei) / 1e18).toFixed(6);
+          
+          console.log('📊 Parsed multiple values:', {
+            availableWei: availableWei.toString(),
+            lockedWei: lockedWei.toString(),
+            available: available + ' HBAR',
+            locked: locked + ' HBAR'
+          });
+        } else {
+          console.warn('⚠️ Unexpected result length:', result.length);
+          // Try to parse anyway
+          const balanceWei = BigInt(result);
+          available = (Number(balanceWei) / 1e18).toFixed(6);
+          console.log('📊 Fallback parsing:', {
+            balanceWei: balanceWei.toString(),
+            available: available + ' HBAR'
+          });
+        }
+        
+        setState(prev => ({
+          ...prev,
+          balance: { available, locked },
+          loading: false,
+        }));
+        
+        console.log('✅ BALANCE UPDATED:', { available, locked });
+      } else {
+        console.log('❌ No valid balance data');
+        setState(prev => ({
+          ...prev,
+          balance: { available: '0.000000', locked: '0.000000' },
+          loading: false,
+        }));
+      }
+      
     } catch (error: any) {
-      console.error('Balance check error:', error);
-      // Set default balance on error to avoid blocking UI
-      const defaultBalance = { available: '0.0000', locked: '0.0000' };
+      console.error('❌ BALANCE CHECK ERROR:', error);
+      console.error('Error details:', {
+        message: error.message,
+        code: error.code,
+        data: error.data
+      });
+      
       setState(prev => ({
         ...prev,
-        balance: defaultBalance,
-        error: `Balance check failed: ${error.message}`,
-      }));
-      return defaultBalance;
-    }
-  }, []);
-      setState(prev => ({
-        ...prev,
-        balance: { available: '0.0000', locked: '0.0000' },
-        error: `Balance check failed: ${error.message}`,
+        loading: false,
+        error: error.message || 'Failed to check balance',
+        balance: { available: '0.000000', locked: '0.000000' }
       }));
     }
   }, []);
 
-  // Refresh system status from contracts
+  // Refresh system status using CompactDarkPoolDEX
   const refreshSystemStatus = useCallback(async () => {
     try {
       const provider = getProvider();
       
-      // Check if DarkPool contract exists and get basic info
       console.log('Refreshing system status...');
       
-      // Call checkDarkPoolAddresses() on HederaDarkPoolManager
-      const addressCheckResult = await provider.request({
-        method: 'eth_call',
-        params: [{
-          to: CONTRACT_CONFIG.hederaDarkPoolManager,
-          data: CONTRACT_ABI.checkDarkPoolAddresses,
-        }, 'latest'],
+      // Make contract calls with individual error handling
+      let ownerResult = '0x';
+      let pausedResult = '0x0';
+      let usdcResult = CONTRACT_CONFIG.usdcToken;
+      let noirVerifierResult = '0x0000000000000000000000000000000000000000';
+      
+      try {
+        ownerResult = await provider.request({
+          method: 'eth_call',
+          params: [{
+            to: CONTRACT_CONFIG.compactDarkPoolDEX,
+            data: CONTRACT_ABI.owner,
+          }, 'latest'],
+        });
+      } catch (error) {
+        console.warn('Owner call failed:', error);
+      }
+      
+      try {
+        pausedResult = await provider.request({
+          method: 'eth_call',
+          params: [{
+            to: CONTRACT_CONFIG.compactDarkPoolDEX,
+            data: CONTRACT_ABI.paused,
+          }, 'latest'],
+        });
+      } catch (error) {
+        console.warn('Paused call failed:', error);
+      }
+      
+      try {
+        usdcResult = await provider.request({
+          method: 'eth_call',
+          params: [{
+            to: CONTRACT_CONFIG.compactDarkPoolDEX,
+            data: CONTRACT_ABI.getUSDCAddress,
+          }, 'latest'],
+        });
+      } catch (error) {
+        console.warn('USDC address call failed (function might not exist):', error);
+        usdcResult = CONTRACT_CONFIG.usdcToken; // Fallback to known USDC address
+      }
+      
+      // Try to get NoirVerifier address from contract
+      try {
+        // First try the public getter (most likely to work)
+        noirVerifierResult = await provider.request({
+          method: 'eth_call',
+          params: [{
+            to: CONTRACT_CONFIG.compactDarkPoolDEX,
+            data: CONTRACT_ABI.noirVerifier,
+          }, 'latest'],
+        });
+        console.log('NoirVerifier address from contract (public getter):', noirVerifierResult);
+      } catch (error) {
+        console.warn('NoirVerifier public getter call failed, trying custom function:', error);
+        
+        try {
+          // Try custom function as fallback
+          noirVerifierResult = await provider.request({
+            method: 'eth_call',
+            params: [{
+              to: CONTRACT_CONFIG.compactDarkPoolDEX,
+              data: CONTRACT_ABI.getNoirVerifier,
+            }, 'latest'],
+          });
+          console.log('NoirVerifier address from contract (custom function):', noirVerifierResult);
+        } catch (error2) {
+          console.warn('NoirVerifier custom function call also failed:', error2);
+          noirVerifierResult = '0x0000000000000000000000000000000000000000';
+        }
+      }
+      
+      const exists = ownerResult !== '0x';
+      const paused = pausedResult && parseInt(pausedResult, 16) === 1;
+      
+      // Safe string processing with type checking
+      const owner = (ownerResult && typeof ownerResult === 'string' && ownerResult.length > 26) 
+        ? `0x${ownerResult.slice(26)}` 
+        : '';
+      
+      const usdcAddress = (usdcResult && typeof usdcResult === 'string' && usdcResult.length > 26) 
+        ? `0x${usdcResult.slice(26)}` 
+        : usdcResult || CONTRACT_CONFIG.usdcToken; // Use as-is if not a hex string
+      
+      const noirVerifierAddress = (noirVerifierResult && typeof noirVerifierResult === 'string' && noirVerifierResult.length > 26) 
+        ? `0x${noirVerifierResult.slice(26)}` 
+        : noirVerifierResult || '0x0000000000000000000000000000000000000000';
+      
+      console.log('System status results:', {
+        ownerResult: typeof ownerResult + ': ' + ownerResult,
+        pausedResult: typeof pausedResult + ': ' + pausedResult,
+        usdcResult: typeof usdcResult + ': ' + usdcResult,
+        noirVerifierResult: typeof noirVerifierResult + ': ' + noirVerifierResult,
+        processedOwner: owner,
+        processedUsdcAddress: usdcAddress,
+        processedNoirVerifierAddress: noirVerifierAddress
       });
-      
-      console.log('Address check result:', addressCheckResult);
-      
-      // Get contract owner
-      const ownerResult = await provider.request({
-        method: 'eth_call',
-        params: [{
-          to: CONTRACT_CONFIG.darkpoolPerpDEX,
-          data: CONTRACT_ABI.owner,
-        }, 'latest'],
-      });
-      
-      console.log('Owner result:', ownerResult);
-      
-      // Get paused status
-      const pausedResult = await provider.request({
-        method: 'eth_call',
-        params: [{
-          to: CONTRACT_CONFIG.darkpoolPerpDEX,
-          data: CONTRACT_ABI.paused,
-        }, 'latest'],
-      });
-      
-      console.log('Paused result:', pausedResult);
-      
-      const exists = addressCheckResult && addressCheckResult !== '0x';
-      const owner = ownerResult ? `0x${ownerResult.slice(-40)}` : CONTRACT_CONFIG.darkpoolPerpDEX;
-      const paused = pausedResult ? BigInt(pausedResult) > 0 : false;
       
       setState(prev => ({
         ...prev,
         systemStatus: {
           exists,
           paused,
-          marketCount: 8, // Default market count
+          marketCount: 8,
           owner,
+          usdcAddress,
+          noirVerifierAddress,
         },
       }));
       
-      console.log('System status updated:', { exists, paused, owner });
-      
     } catch (error: any) {
-      console.error('System status refresh error:', error);
-      // Set default status on error
+      console.error('Error refreshing system status:', error);
       setState(prev => ({
         ...prev,
         systemStatus: {
           exists: true,
           paused: false,
           marketCount: 8,
-          owner: CONTRACT_CONFIG.darkpoolPerpDEX,
+          owner: CONTRACT_CONFIG.compactDarkPoolDEX,
+          usdcAddress: '0x340e7949d378C6d6eB1cf7391F5C39b6c826BA9d',
+          noirVerifierAddress: '0x0000000000000000000000000000000000000000',
         },
-        error: `Status refresh failed: ${error.message}`,
+        error: error.message || 'Failed to refresh system status',
       }));
     }
   }, []);
 
-  // Get stored markets
+  // Get stored markets from CompactDarkPoolDEX
   const getStoredMarkets = useCallback(async () => {
-    return Promise.resolve();
+    try {
+      const provider = getProvider();
+      
+      // Call getMarketSymbols() on CompactDarkPoolDEX
+      const result = await provider.request({
+        method: 'eth_call',
+        params: [{
+          to: CONTRACT_CONFIG.compactDarkPoolDEX,
+          data: CONTRACT_ABI.getMarketSymbols,
+        }, 'latest'],
+      });
+      
+      if (result && result !== '0x') {
+        // For now, use the default markets we know are initialized
+        const markets = [
+          'BTC/USDC', 'ETH/USDC', 'SOL/USDC', 'HBAR/USDC',
+          'ADA/USDC', 'AVAX/USDC', 'DOT/USDC', 'MATIC/USDC'
+        ];
+        
+        setState(prev => ({
+          ...prev,
+          markets,
+        }));
+      }
+      
+    } catch (error: any) {
+      console.error('Error getting stored markets:', error);
+      // Use default markets on error
+      setState(prev => ({
+        ...prev,
+        markets: [
+          'BTC/USDC', 'ETH/USDC', 'SOL/USDC', 'HBAR/USDC',
+          'ADA/USDC', 'AVAX/USDC', 'DOT/USDC', 'MATIC/USDC'
+        ],
+      }));
+    }
   }, []);
 
-  // Auto-connect on mount if provider is available
+  // Auto-refresh system status on mount
   useEffect(() => {
-    if (typeof window !== 'undefined' && window.ethereum) {
-      window.ethereum.request({ method: 'eth_accounts' })
-        .then((accounts: string[]) => {
-          if (accounts.length > 0) {
-            setState(prev => ({ ...prev, isConnected: true }));
-            checkBalance(accounts[0]);
-          }
-        })
-        .catch(console.error);
-    }
-  }, [checkBalance]);
+    refreshSystemStatus();
+  }, [refreshSystemStatus]);
 
   return {
     ...state,
     connect,
-    deposit,
-    withdraw,
+    // Native HBAR functions (recommended for stability)
+    depositHBAR,
+    withdrawHBAR,
+    // USDC functions (may have network issues)
+    depositUSDC,
+    withdrawUSDC,
     checkBalance,
     refreshSystemStatus,
     getStoredMarkets,

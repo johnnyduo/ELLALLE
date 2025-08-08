@@ -34,7 +34,7 @@
     "security:audit": "yarn audit --level moderate",
     "deps:update": "yarn upgrade-interactive --latest",
     "deps:check": "yarn outdated",
-    "hedera:add-network": "echo 'Add Hedera Previewnet to MetaMask manually or the app will prompt'",
+    "hedera:add-network": "echo 'Add Hedera Testnet to MetaMask manually or the app will prompt'",
     "postinstall": "yarn type-check"
   },
   "dependencies": {
@@ -92,6 +92,8 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.32.0",
+    "@nomicfoundation/hardhat-ethers": "3.1.0",
+    "@nomicfoundation/hardhat-toolbox": "6.1.0",
     "@tailwindcss/typography": "^0.5.16",
     "@types/node": "^22.16.5",
     "@types/react": "^18.3.23",
@@ -102,6 +104,7 @@
     "eslint-plugin-react-hooks": "^5.2.0",
     "eslint-plugin-react-refresh": "^0.4.20",
     "globals": "^15.15.0",
+    "hardhat": "2.26.2",
     "postcss": "^8.5.6",
     "tailwindcss": "^3.4.17",
     "typescript": "^5.8.3",

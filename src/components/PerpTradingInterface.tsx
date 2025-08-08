@@ -9,6 +9,7 @@ import { useZKProof } from '@/hooks/useZKProof';
 import { TradeStorageManager } from '@/lib/storage/tradeStorage';
 import { TradeIntent } from '@/types/zkp';
 import {
+    AlertTriangle,
     CheckCircle,
     Clock,
     ExternalLink,
@@ -55,6 +56,7 @@ interface PerpTradingInterfaceProps {
   isPrivateMode: boolean;
   onPrivateModeChange: (enabled: boolean) => void;
   walletBalance: string;
+  usdcBalance: string;
   onTrade: (order: Omit<Order, 'id' | 'timestamp' | 'status'>) => Promise<void>;
 }
 
@@ -64,6 +66,7 @@ export const PerpTradingInterface: React.FC<PerpTradingInterfaceProps> = ({
   isPrivateMode,
   onPrivateModeChange,
   walletBalance,
+  usdcBalance,
   onTrade
 }) => {
   const [activeTab, setActiveTab] = useState('trade');
@@ -123,6 +126,30 @@ export const PerpTradingInterface: React.FC<PerpTradingInterfaceProps> = ({
     const size = parseFloat(orderSize) || 0;
     const price = orderType === 'market' ? currentPrice : parseFloat(orderPrice) || currentPrice;
     return (size * price) / leverage;
+  };
+
+  const calculateNotionalValue = () => {
+    const size = parseFloat(orderSize) || 0;
+    const price = orderType === 'market' ? currentPrice : parseFloat(orderPrice) || currentPrice;
+    return size * price;
+  };
+
+  const calculateFees = () => {
+    const notional = calculateNotionalValue();
+    // 0.1% trading fee
+    return notional * 0.001;
+  };
+
+  const calculateTotalCost = () => {
+    const margin = calculateMargin();
+    const fees = calculateFees();
+    return margin + fees;
+  };
+
+  const canAffordOrder = () => {
+    const totalCost = calculateTotalCost();
+    const availableUSDC = parseFloat(usdcBalance) || 0;
+    return totalCost <= availableUSDC;
   };
 
   const calculateLiquidationPrice = () => {
@@ -289,29 +316,203 @@ export const PerpTradingInterface: React.FC<PerpTradingInterfaceProps> = ({
               <div className="space-y-3">
                 {orderType === 'limit' && (
                   <div>
-                    <Label htmlFor="price">Price (USD)</Label>
-                    <Input
-                      id="price"
-                      type="number"
-                      value={orderPrice}
-                      onChange={(e) => setOrderPrice(e.target.value)}
-                      placeholder={currentPrice.toString()}
-                      className="glass"
-                    />
+                    <Label htmlFor="price">Price (USDC)</Label>
+                    <div className="space-y-2">
+                      <Input
+                        id="price"
+                        type="number"
+                        value={orderPrice}
+                        onChange={(e) => setOrderPrice(e.target.value)}
+                        placeholder={currentPrice.toFixed(2)}
+                        step="0.01"
+                        className="glass"
+                      />
+                      <div className="flex space-x-1">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => setOrderPrice((currentPrice * 0.99).toFixed(2))}
+                          className="text-xs px-2 py-1 h-6"
+                        >
+                          -1%
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => setOrderPrice((currentPrice * 0.995).toFixed(2))}
+                          className="text-xs px-2 py-1 h-6"
+                        >
+                          -0.5%
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => setOrderPrice(currentPrice.toFixed(2))}
+                          className="text-xs px-2 py-1 h-6 text-yellow-400"
+                        >
+                          Market
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => setOrderPrice((currentPrice * 1.005).toFixed(2))}
+                          className="text-xs px-2 py-1 h-6"
+                        >
+                          +0.5%
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => setOrderPrice((currentPrice * 1.01).toFixed(2))}
+                          className="text-xs px-2 py-1 h-6"
+                        >
+                          +1%
+                        </Button>
+                      </div>
+                    </div>
                   </div>
                 )}
 
                 <div>
                   <Label htmlFor="size">Size ({selectedSymbol.split('/')[0]})</Label>
-                  <Input
-                    id="size"
-                    type="number"
-                    value={orderSize}
-                    onChange={(e) => setOrderSize(e.target.value)}
-                    placeholder="0.0"
-                    step="0.01"
-                    className="glass"
-                  />
+                  <div className="space-y-2">
+                    <Input
+                      id="size"
+                      type="number"
+                      value={orderSize}
+                      onChange={(e) => setOrderSize(e.target.value)}
+                      placeholder="0.0"
+                      step="0.01"
+                      className="glass"
+                    />
+                    <div className="flex space-x-1">
+                      {selectedSymbol.includes('BTC') && (
+                        <>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => setOrderSize('0.01')}
+                            className="text-xs px-2 py-1 h-6"
+                          >
+                            0.01
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => setOrderSize('0.1')}
+                            className="text-xs px-2 py-1 h-6"
+                          >
+                            0.1
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => setOrderSize('0.5')}
+                            className="text-xs px-2 py-1 h-6"
+                          >
+                            0.5
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => setOrderSize('1')}
+                            className="text-xs px-2 py-1 h-6"
+                          >
+                            1
+                          </Button>
+                        </>
+                      )}
+                      {selectedSymbol.includes('ETH') && (
+                        <>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => setOrderSize('0.1')}
+                            className="text-xs px-2 py-1 h-6"
+                          >
+                            0.1
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => setOrderSize('1')}
+                            className="text-xs px-2 py-1 h-6"
+                          >
+                            1
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => setOrderSize('5')}
+                            className="text-xs px-2 py-1 h-6"
+                          >
+                            5
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => setOrderSize('10')}
+                            className="text-xs px-2 py-1 h-6"
+                          >
+                            10
+                          </Button>
+                        </>
+                      )}
+                      {!selectedSymbol.includes('BTC') && !selectedSymbol.includes('ETH') && (
+                        <>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => setOrderSize('10')}
+                            className="text-xs px-2 py-1 h-6"
+                          >
+                            10
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => setOrderSize('50')}
+                            className="text-xs px-2 py-1 h-6"
+                          >
+                            50
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => setOrderSize('100')}
+                            className="text-xs px-2 py-1 h-6"
+                          >
+                            100
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => setOrderSize('500')}
+                            className="text-xs px-2 py-1 h-6"
+                          >
+                            500
+                          </Button>
+                        </>
+                      )}
+                    </div>
+                  </div>
                 </div>
 
                 <div>
@@ -333,18 +534,72 @@ export const PerpTradingInterface: React.FC<PerpTradingInterfaceProps> = ({
 
               {/* Order Summary */}
               {orderSize && (
-                <div className="space-y-2 p-3 bg-purple-500/5 border border-purple-500/20 rounded-lg">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Margin Required:</span>
-                    <span>{formatPrice(calculateMargin())}</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Liquidation Price:</span>
-                    <span className="text-red-400">{formatPrice(calculateLiquidationPrice())}</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Available Balance:</span>
-                    <span>{walletBalance} HBAR</span>
+                <div className="space-y-3 p-4 bg-purple-500/5 border border-purple-500/20 rounded-lg">
+                  <div className="text-sm font-medium text-purple-300 mb-2">Order Summary</div>
+                  
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Entry Price:</span>
+                      <span className="font-medium">
+                        {orderType === 'market' ? 
+                          `$${currentPrice.toLocaleString(undefined, { minimumFractionDigits: 2 })} (Market)` :
+                          `$${parseFloat(orderPrice || '0').toLocaleString(undefined, { minimumFractionDigits: 2 })} (Limit)`
+                        }
+                      </span>
+                    </div>
+                    
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Position Size:</span>
+                      <span className="font-medium">{orderSize} {selectedSymbol.split('/')[0]}</span>
+                    </div>
+                    
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Notional Value:</span>
+                      <span className="font-medium">${calculateNotionalValue().toLocaleString(undefined, { minimumFractionDigits: 2 })} USDC</span>
+                    </div>
+                    
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Leverage:</span>
+                      <span className="font-medium text-yellow-400">{leverage}x</span>
+                    </div>
+                    
+                    <div className="border-t border-purple-500/20 pt-2 mt-2">
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Margin Required:</span>
+                        <span className="font-medium">${calculateMargin().toLocaleString(undefined, { minimumFractionDigits: 2 })} USDC</span>
+                      </div>
+                      
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Trading Fees (0.1%):</span>
+                        <span className="font-medium">${calculateFees().toLocaleString(undefined, { minimumFractionDigits: 4 })} USDC</span>
+                      </div>
+                      
+                      <div className="flex justify-between font-medium text-base pt-1 border-t border-purple-500/20 mt-1">
+                        <span>Total Cost:</span>
+                        <span className={canAffordOrder() ? 'text-green-400' : 'text-red-400'}>
+                          ${calculateTotalCost().toLocaleString(undefined, { minimumFractionDigits: 2 })} USDC
+                        </span>
+                      </div>
+                    </div>
+                    
+                    <div className="border-t border-purple-500/20 pt-2 mt-2">
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Liquidation Price:</span>
+                        <span className="text-red-400 font-medium">${calculateLiquidationPrice().toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                      </div>
+                      
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Available USDC:</span>
+                        <span className="font-medium">${parseFloat(usdcBalance).toLocaleString(undefined, { minimumFractionDigits: 2 })} USDC</span>
+                      </div>
+                      
+                      {!canAffordOrder() && orderSize && (
+                        <div className="flex items-center space-x-1 text-red-400 text-xs mt-1">
+                          <AlertTriangle className="w-3 h-3" />
+                          <span>Insufficient USDC balance</span>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               )}
@@ -352,13 +607,25 @@ export const PerpTradingInterface: React.FC<PerpTradingInterfaceProps> = ({
               {/* Submit Button */}
               <Button
                 onClick={handleSubmitOrder}
-                disabled={!orderSize || parseFloat(orderSize) <= 0 || isGeneratingProof}
-                className={`w-full ${orderSide === 'buy' ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'}`}
+                disabled={
+                  !orderSize || 
+                  parseFloat(orderSize) <= 0 || 
+                  isGeneratingProof ||
+                  !canAffordOrder()
+                }
+                className={`w-full ${orderSide === 'buy' ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'} ${
+                  !canAffordOrder() ? 'opacity-50 cursor-not-allowed' : ''
+                }`}
               >
                 {isGeneratingProof ? (
                   <>
                     <Lock className="w-4 h-4 mr-2" />
                     Generating ZK Proof...
+                  </>
+                ) : !canAffordOrder() && orderSize ? (
+                  <>
+                    <AlertTriangle className="w-4 h-4 mr-2" />
+                    Insufficient USDC Balance
                   </>
                 ) : (
                   <>
@@ -552,7 +819,7 @@ export const PerpTradingInterface: React.FC<PerpTradingInterfaceProps> = ({
                           {trade.txHash && (
                             <div className="mt-2 flex items-center space-x-2">
                               <a 
-                                href={`https://hashscan.io/previewnet/transaction/${trade.txHash}`}
+                                href={`https://hashscan.io/testnet/transaction/${trade.txHash}`}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="text-xs text-purple-400 hover:text-purple-300 flex items-center space-x-1"
