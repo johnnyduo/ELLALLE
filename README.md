@@ -8,14 +8,14 @@
 
 🌐 **Live Platform:** [https://ellalle.xyz](https://ellalle.xyz)
 
-## 🌈 Meet Our Rainbow Cat Mascot
+## 🐱 Rolling Cat - Let's Rolling into Private Trading Market!
 
 <div align="center">
-  <img src="https://raw.githubusercontent.com/johnnyduo/stealthflow-aiview/main/public/placeholder.svg" alt="Rainbow Cat Animation" width="200" height="200">
+  <img src="https://raw.githubusercontent.com/johnnyduo/stealthflow-aiview/main/public/494d0a78-e85d-4898-82ef-c20bd64bb88f.gif" alt="Rolling Cat - Let's Rolling into Private Trading!" width="300" height="300">
   
-  *Our adorable rainbow cat guides you through the world of private trading!*
+  *Our rolling cat is ready to roll into the future of private trading! 🚀*
   
-  > 💫 **Interactive Version:** Experience the full Lottie animation at [ellalle.xyz](https://ellalle.xyz)
+  > 🎯 **Let's Rolling Together:** Join the privacy revolution at [ellalle.xyz](https://ellalle.xyz)
 </div>
 
 ## 📋 Deployed Contracts (Hedera Testnet)
