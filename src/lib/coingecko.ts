@@ -169,84 +169,84 @@ const getSymbolFromId = (coinId: string): string => {
   return entry ? entry[0] : coinId.toUpperCase();
 };
 
-// Mock data fallback with realistic current prices (August 2025)
+// Mock data fallback with MVP-realistic numbers (August 2025)
 export const getMockMarketData = (): MarketData[] => [
   {
     symbol: 'BTC/USDC',
-    price: 116514.23, // Current realistic BTC price
+    price: 116514.23, // Keep realistic prices
     change24h: 2.47,
-    volume24h: 28500000000,
-    marketCap: 2300000000000,
+    volume24h: 850000, // MVP scale: $850K daily volume
+    marketCap: 2300000000, // Keep market cap realistic but note: this won't be used in dashboard
     high24h: 118250.00,
     low24h: 113890.50,
     sparkline: generateSparkline(116514.23, 24),
   },
   {
     symbol: 'ETH/USDC',
-    price: 3858.42, // Current realistic ETH price
+    price: 3858.42, // Keep realistic prices
     change24h: -1.23,
-    volume24h: 12500000000,
-    marketCap: 465000000000,
+    volume24h: 320000, // MVP scale: $320K daily volume
+    marketCap: 465000000000, // Keep market cap realistic but note: this won't be used in dashboard
     high24h: 3912.80,
     low24h: 3801.15,
     sparkline: generateSparkline(3858.42, 24),
   },
   {
     symbol: 'SOL/USDC',
-    price: 172.01, // Current realistic SOL price
+    price: 172.01, // Keep realistic prices
     change24h: 4.56,
-    volume24h: 2200000000,
-    marketCap: 82000000000,
+    volume24h: 180000, // MVP scale: $180K daily volume
+    marketCap: 82000000000, // Keep market cap realistic but note: this won't be used in dashboard
     high24h: 178.50,
     low24h: 168.20,
     sparkline: generateSparkline(172.01, 24),
   },
   {
     symbol: 'AVAX/USDC',
-    price: 22.78, // Current realistic AVAX price
+    price: 22.78, // Keep realistic prices
     change24h: 3.89,
-    volume24h: 520000000,
-    marketCap: 9200000000,
+    volume24h: 95000, // MVP scale: $95K daily volume
+    marketCap: 9200000000, // Keep market cap realistic but note: this won't be used in dashboard
     high24h: 23.45,
     low24h: 21.95,
     sparkline: generateSparkline(22.78, 24),
   },
   {
     symbol: 'HBAR/USDC',
-    price: 0.2532, // Current realistic HBAR price
+    price: 0.2532, // Keep realistic prices
     change24h: 3.21,
-    volume24h: 45000000,
-    marketCap: 9500000000,
+    volume24h: 750000, // MVP scale: $750K daily volume (HBAR is the main token)
+    marketCap: 9500000000, // Keep market cap realistic but note: this won't be used in dashboard
     high24h: 0.2649,
     low24h: 0.2445,
     sparkline: generateSparkline(0.2532, 24),
   },
   {
     symbol: 'ADA/USDC',
-    price: 0.7821, // Current realistic ADA price
+    price: 0.7821, // Keep realistic prices
     change24h: -2.15,
-    volume24h: 385000000,
-    marketCap: 28000000000,
+    volume24h: 65000, // MVP scale: $65K daily volume
+    marketCap: 28000000000, // Keep market cap realistic but note: this won't be used in dashboard
     high24h: 0.8012,
     low24h: 0.7654,
     sparkline: generateSparkline(0.7821, 24),
   },
   {
     symbol: 'DOT/USDC',
-    price: 3.79, // Current realistic DOT price
+    price: 3.79, // Keep realistic prices
     change24h: 5.22,
-    volume24h: 195000000,
-    marketCap: 5400000000,
+    volume24h: 45000, // MVP scale: $45K daily volume
+    marketCap: 5400000000, // Keep market cap realistic but note: this won't be used in dashboard
     high24h: 3.89,
     low24h: 3.61,
     sparkline: generateSparkline(3.79, 24),
   },
   {
     symbol: 'MATIC/USDC',
-    price: 0.2916, // Current realistic MATIC price
+    price: 0.2916, // Keep realistic prices
     change24h: 6.93,
-    volume24h: 142000000,
-    marketCap: 2900000000,
+    volume24h: 35000, // MVP scale: $35K daily volume
+    marketCap: 2900000000, // Keep market cap realistic but note: this won't be used in dashboard
     high24h: 0.3021,
     low24h: 0.2745,
     sparkline: generateSparkline(0.2916, 24),

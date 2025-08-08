@@ -74,11 +74,34 @@ export const formatBalance = (
 export const formatPrice = (price: number, currency = 'USD'): string => {
   if (price === 0) return '$0.00';
   
+  // For very small prices (less than $0.01), show more decimal places
+  if (Math.abs(price) < 0.01) {
+    const formatter = new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency,
+      minimumFractionDigits: 4,
+      maximumFractionDigits: 6,
+    });
+    return formatter.format(price);
+  }
+  
+  // For small prices (less than $1), show 4 decimal places
+  if (Math.abs(price) < 1) {
+    const formatter = new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency,
+      minimumFractionDigits: 4,
+      maximumFractionDigits: 4,
+    });
+    return formatter.format(price);
+  }
+  
+  // For normal prices, show 2 decimal places
   const formatter = new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency,
-    minimumFractionDigits: price < 1 ? 4 : 2,
-    maximumFractionDigits: price < 1 ? 6 : 2,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
   });
   
   return formatter.format(price);

@@ -142,10 +142,18 @@ export const InteractiveChart: React.FC<InteractiveChartProps> = ({
       });
       
       // Calculate price change based on current price vs previous point
+      // Use a more stable calculation to prevent big jumps
       if (data.length > 1) {
         const previous = data[data.length - 2];
-        setPriceChange(currentPrice - previous.price);
-        setPriceChangePercent(((currentPrice - previous.price) / previous.price) * 100);
+        const change = currentPrice - previous.price;
+        const changePercent = previous.price > 0 ? ((change / previous.price) * 100) : 0;
+        
+        // Cap extreme changes to prevent UI jumps (max ±25% change)
+        const cappedChange = Math.max(-previous.price * 0.25, Math.min(previous.price * 0.25, change));
+        const cappedChangePercent = Math.max(-25, Math.min(25, changePercent));
+        
+        setPriceChange(cappedChange);
+        setPriceChangePercent(cappedChangePercent);
       }
     }
   }, [currentPrice]);
@@ -303,7 +311,7 @@ export const InteractiveChart: React.FC<InteractiveChartProps> = ({
               <div className={`flex items-center space-x-1 ${priceChange >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                 {priceChange >= 0 ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
                 <span className="font-medium">
-                  {priceChange >= 0 ? '+' : ''}{priceChange.toFixed(2)} ({priceChangePercent.toFixed(2)}%)
+                  {priceChange >= 0 ? '+' : ''}{formatPrice(Math.abs(priceChange)).replace('$', '')} ({priceChangePercent.toFixed(2)}%)
                 </span>
               </div>
             </div>
@@ -395,18 +403,7 @@ export const InteractiveChart: React.FC<InteractiveChartProps> = ({
       </CardHeader>
 
       <CardContent>
-        <div className={`h-96 min-h-[384px] ${isPrivateMode ? 'relative' : ''}`}>
-          {/* Privacy Overlay */}
-          {isPrivateMode && (
-            <div className="absolute inset-0 bg-gradient-to-br from-purple-900/20 to-purple-600/10 backdrop-blur-sm z-10 rounded-lg border border-purple-500/30">
-              <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-center">
-                <Shield className="w-8 h-8 text-purple-400 mx-auto mb-2" />
-                <div className="text-purple-300 font-medium">ZKP Protected View</div>
-                <div className="text-purple-400 text-sm">Trading data encrypted with zero-knowledge proofs</div>
-              </div>
-            </div>
-          )}
-
+        <div className="h-96 min-h-[384px]">
           <ResponsiveContainer width="100%" height="100%" minHeight={350}>
             {chartType === 'line' ? (
               <LineChart data={data}>

@@ -165,14 +165,14 @@ const Hero: React.FC<HeroProps> = ({ onNavigate }) => {
             ))}
           </div>
 
-          {/* Stats Section */}
+          {/* Stats Section - Series A MVP Scale */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-8 px-2">
             <div className="card-glass text-center p-4 md:p-6">
-              <div className="text-2xl md:text-3xl font-bold gradient-text mb-2">$2.4B+</div>
+              <div className="text-2xl md:text-3xl font-bold gradient-text mb-2">$8.5M+</div>
               <div className="text-sm md:text-base text-muted-foreground">Dark Pool Volume</div>
             </div>
             <div className="card-glass text-center p-4 md:p-6">
-              <div className="text-2xl md:text-3xl font-bold text-profit mb-2">850+</div>
+              <div className="text-2xl md:text-3xl font-bold text-profit mb-2">45+</div>
               <div className="text-sm md:text-base text-muted-foreground">Institutional Traders</div>
             </div>
             <div className="card-glass text-center p-4 md:p-6">
