@@ -11,7 +11,7 @@
 ## 🐱 Rolling Cat - Let's Rolling into Private Trading Market!
 
 <div align="center">
-  <img src="https://raw.githubusercontent.com/johnnyduo/stealthflow-aiview/main/public/494d0a78-e85d-4898-82ef-c20bd64bb88f.gif" alt="Rolling Cat - Let's Rolling into Private Trading!" width="300" height="300">
+  <img src="https://raw.githubusercontent.com/johnnyduo/stealthflow-aiview/main/public/qeBRbfgoTC.gif" alt="Rolling Cat - Let's Rolling into Private Trading!" width="300" height="300">
   
   *Our rolling cat is ready to roll into the future of private trading! 🚀*
   
