@@ -26,10 +26,10 @@ const Portfolio = () => {
   const [activeTab, setActiveTab] = useState('overview');
 
   // Advanced Portfolio Data for Private Trading
-  const portfolioValue = 2847250.80;
-  const portfolioChange = 89420.45;
+  const portfolioValue = 100039.600615;
+  const portfolioChange = 3143.59;
   const portfolioChangePercent = 3.24;
-  const zkpTradingVolume = 1250000.50;
+  const zkpTradingVolume = 43954.83;
   const privacyScore = 95.7;
   const riskScore = 23.5;
 
@@ -38,8 +38,8 @@ const Portfolio = () => {
     { 
       symbol: 'HBAR', 
       name: 'Hedera Hashgraph', 
-      amount: 11245000, 
-      value: 2847250, 
+      amount: 245096, 
+      value: 62024.55, 
       change: 3.24, 
       allocation: 62,
       zkpTrades: 147,
@@ -50,8 +50,8 @@ const Portfolio = () => {
     { 
       symbol: 'USDC', 
       name: 'USD Coin', 
-      amount: 485000, 
-      value: 485000, 
+      amount: 21008, 
+      value: 21008.32, 
       change: 0.01, 
       allocation: 21,
       zkpTrades: 89,
@@ -62,8 +62,8 @@ const Portfolio = () => {
     { 
       symbol: 'BTC', 
       name: 'Bitcoin', 
-      amount: 2.8574, 
-      value: 332890, 
+      amount: 0.0940, 
+      value: 11004.36, 
       change: 1.87, 
       allocation: 11,
       zkpTrades: 23,
@@ -74,8 +74,8 @@ const Portfolio = () => {
     { 
       symbol: 'ETH', 
       name: 'Ethereum', 
-      amount: 42.67, 
-      value: 164680, 
+      amount: 1.578, 
+      value: 6002.45, 
       change: -0.45, 
       allocation: 6,
       zkpTrades: 34,
@@ -91,12 +91,12 @@ const Portfolio = () => {
       id: 'zkp-001',
       asset: 'HBAR/USDC', 
       type: 'Long', 
-      size: '2.5M HBAR', 
+      size: '87.8K HBAR', 
       entry: 0.2445, 
       mark: 0.2534, 
-      pnl: 22250.50, 
+      pnl: 781.95, 
       pnlPercent: 3.64,
-      margin: 125000,
+      margin: 4394,
       leverage: 5.2,
       zkpProof: 'verified',
       poolType: 'Private Alpha',
@@ -109,12 +109,12 @@ const Portfolio = () => {
       id: 'zkp-002',
       asset: 'BTC/USDC', 
       type: 'Short', 
-      size: '0.75 BTC', 
+      size: '0.0264 BTC', 
       entry: 118750, 
       mark: 116514, 
-      pnl: 1677.50, 
+      pnl: 59.02, 
       pnlPercent: 1.88,
-      margin: 22500,
+      margin: 791,
       leverage: 3.8,
       zkpProof: 'verified',
       poolType: 'Institutional Dark',
@@ -127,12 +127,12 @@ const Portfolio = () => {
       id: 'zkp-003',
       asset: 'ETH/USDC', 
       type: 'Long', 
-      size: '12.0 ETH', 
+      size: '0.422 ETH', 
       entry: 3780, 
       mark: 3858, 
-      pnl: 936.50, 
+      pnl: 32.92, 
       pnlPercent: 2.06,
-      margin: 15500,
+      margin: 545,
       leverage: 2.9,
       zkpProof: 'pending',
       poolType: 'Private Beta',
@@ -145,11 +145,11 @@ const Portfolio = () => {
 
   // Private Trading Performance History
   const performanceHistory = [
-    { period: '1H', pnl: 4250.80, percent: 0.15, zkpTrades: 8, avgSize: 125000 },
-    { period: '1D', pnl: 23475.25, percent: 0.84, zkpTrades: 47, avgSize: 89000 },
-    { period: '1W', pnl: 156890.40, percent: 5.83, zkpTrades: 234, avgSize: 76500 },
-    { period: '1M', pnl: 489350.75, percent: 20.74, zkpTrades: 1247, avgSize: 82300 },
-    { period: '3M', pnl: 847250.20, percent: 42.37, zkpTrades: 3891, avgSize: 79800 }
+    { period: '1H', pnl: 149.44, percent: 0.15, zkpTrades: 8, avgSize: 4394 },
+    { period: '1D', pnl: 825.02, percent: 0.84, zkpTrades: 47, avgSize: 3129 },
+    { period: '1W', pnl: 5515.56, percent: 5.83, zkpTrades: 234, avgSize: 2689 },
+    { period: '1M', pnl: 17201.39, percent: 20.74, zkpTrades: 1247, avgSize: 2893 },
+    { period: '3M', pnl: 29791.84, percent: 42.37, zkpTrades: 3891, avgSize: 2804 }
   ];
 
   // ZKP Trading Analytics
