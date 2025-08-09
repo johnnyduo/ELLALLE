@@ -18,6 +18,8 @@
   > 🎯 **Let's Rolling Together:** Join the privacy revolution at [ellalle.xyz](https://ellalle.xyz)
 </div>
 
+<img width="1698" height="899" alt="Screenshot 2568-08-09 at 10 14 36" src="https://github.com/user-attachments/assets/1823bf34-0cdd-47c2-9d14-4987cd3e842a" />
+
 ## 📋 Deployed Contracts (Hedera Testnet)
 
 | Contract | Address | Purpose | Verification |
