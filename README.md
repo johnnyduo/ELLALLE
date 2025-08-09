@@ -566,29 +566,6 @@ yarn fuzz:echidna
 yarn optimize:gas
 ```
 
-## 🔒 Security Considerations
-
-### Threat Model
-
-1. **Malicious Validators:** Protected by aBFT consensus
-2. **Front-running:** Prevented by commit-reveal scheme
-3. **MEV Extraction:** Mitigated by private mempool
-4. **Timing Attacks:** Randomized delay insertion
-5. **Traffic Analysis:** Tor/mixnet integration
-
-### Cryptographic Assumptions
-
-- **Discrete Logarithm Problem:** Hardness in elliptic curve groups
-- **Knowledge of Exponent:** For PLONK soundness
-- **Random Oracle Model:** For Fiat-Shamir transformation
-- **Trusted Setup:** Universal ceremony verification
-
-### Audit Reports
-
-- [Trail of Bits Security Audit](./audits/trail-of-bits-2024.pdf)
-- [Consensys Diligence Review](./audits/consensys-2024.pdf)
-- [Formal Verification Report](./audits/certora-2024.pdf)
-
 ## 📈 Roadmap & Future Development
 
 ### Phase 1: Core Protocol (Q3 2025) ✅
