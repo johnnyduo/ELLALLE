@@ -648,23 +648,6 @@ We welcome contributions from the Web3 community! Please see our detailed contri
 - [ ] Security considerations documented
 - [ ] Integration tests pass
 
-## 📄 License & Legal
-
-This project is licensed under the MIT License with additional cryptographic export restrictions. See [LICENSE](./LICENSE) for details.
-
-### Patents & IP
-
-- ZKP implementations: Open source, no patent restrictions
-- Novel algorithms: Documented in [PATENTS.md](./PATENTS.md)
-- Trademark: "ELLALLE" is a registered trademark
-
-### Compliance
-
-- **GDPR:** Privacy-by-design architecture
-- **CCPA:** Data minimization principles
-- **AML/KYC:** Optional compliance modules
-- **Securities Law:** Utility token framework
-
 ## 📚 Academic References
 
 1. Gabizon, A., Williamson, Z. J., & Ciobotaru, O. (2019). "PLONK: Permutations over Lagrange-bases for Oecumenical Noninteractive Arguments of Knowledge." IACR ePrint Archive.
