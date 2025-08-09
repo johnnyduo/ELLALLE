@@ -42,6 +42,11 @@
 
 ELLALLE is a next-generation decentralized dark pool trading protocol leveraging zero-knowledge proofs (ZKPs) for complete transaction privacy, powered by Hedera Hashgraph's enterprise-grade consensus mechanism. The platform implements advanced cryptographic primitives including PLONK proof systems, Merkle tree commitments, and homomorphic encryption to enable institutional-level trading with mathematical privacy guarantees.
 
+<img width="1398" height="805" alt="Screenshot 2568-08-09 at 10 53 38" src="https://github.com/user-attachments/assets/cb187a72-4f7a-49ea-8058-1df1ac8f0083" />
+
+<img width="1604" height="913" alt="Screenshot 2568-08-09 at 10 54 48" src="https://github.com/user-attachments/assets/f63dd97b-615a-4cdb-9128-c16f1ee21139" />
+
+
 ## 🏗️ Technical Architecture
 
 ### Core Protocol Stack
@@ -238,6 +243,8 @@ fn merkle_verify(
 **Proof Generation Time:** ~2.3s on consumer hardware  
 **Verification Time:** ~8ms on-chain  
 **Trusted Setup:** Universal, no circuit-specific ceremony required
+
+<img width="1404" height="892" alt="Screenshot 2568-08-09 at 10 52 34" src="https://github.com/user-attachments/assets/8ff2b0bf-447f-43e2-9504-a9cdc4914d0d" />
 
 ## 🤖 AI-Powered Market Analysis
 
