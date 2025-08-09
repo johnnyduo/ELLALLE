@@ -566,6 +566,8 @@ yarn fuzz:echidna
 yarn optimize:gas
 ```
 
+<img width="1354" height="899" alt="Screenshot 2568-08-09 at 10 58 35" src="https://github.com/user-attachments/assets/d311ae72-6e2a-44c6-bd9e-968ed67a36fa" />
+
 ## 📈 Roadmap & Future Development
 
 ### Phase 1: Core Protocol (Q3 2025) ✅
